@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Reaches the AI service that tidies the thoughts. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Headroom"
         android:name="${applicationName}"

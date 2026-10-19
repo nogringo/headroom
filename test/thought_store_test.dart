@@ -90,6 +90,50 @@ void main() {
       expect(storage.saved.map((t) => t.text), ['c', 'b', 'a']);
     });
 
+    test('new text drops the theme, new images keep it', () {
+      final thought = store.add('Buy bread')!;
+      store.setThemes({thought.id: 'Errands', 'gone': 'Nowhere'});
+      expect(store.thoughts.single.theme, 'Errands');
+
+      store.update(thought.id, text: 'Buy bread ', images: ['receipt']);
+      expect(store.thoughts.single.theme, 'Errands');
+
+      store.update(thought.id, text: 'Bake bread', images: ['receipt']);
+      expect(store.thoughts.single.theme, isNull);
+    });
+
+    test('merges thoughts into the newest and unmerges them', () async {
+      store
+        ..add('milk', images: ['carton'])
+        ..add('Call the garage')
+        ..add('Buy milk', images: ['list', 'carton']);
+      final [newest, middle, oldest] = store.thoughts;
+      store.setThemes({newest.id: 'Errands'});
+
+      final merged = store.merge([oldest.id, newest.id], ' Buy milk ')!;
+      await store.flush();
+
+      expect(storage.saved.map((t) => t.text), ['Buy milk', 'Call the garage']);
+      final kept = store.thoughts.first;
+      expect(kept.id, newest.id);
+      expect(kept.createdAt, newest.createdAt);
+      expect(kept.theme, 'Errands');
+      expect(kept.images, ['list', 'carton']);
+
+      store.unmerge(merged);
+      await store.flush();
+      expect(storage.saved.map((t) => t.id), [newest.id, middle.id, oldest.id]);
+      expect(storage.saved.first.text, 'Buy milk');
+      expect(storage.saved.last.images, ['carton']);
+    });
+
+    test('merges nothing when fewer than two thoughts are left', () {
+      final thought = store.add('milk')!;
+
+      expect(store.merge([thought.id, 'deleted'], 'Buy milk'), isNull);
+      expect(store.thoughts.single.text, 'milk');
+    });
+
     test('updates text but keeps the original date', () async {
       final thought = store.add('draft')!;
       store.update(thought.id, text: ' final ', images: []);

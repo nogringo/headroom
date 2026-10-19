@@ -36,4 +36,18 @@ class InMemoryStorage implements ThoughtStorage {
   @override
   Future<void> deleteImagesExcept(Set<String> keep) async =>
       images.removeWhere((name, _) => !keep.contains(name));
+
+  final values = <String, String>{};
+
+  @override
+  Future<String?> readValue(String name) async => values[name];
+
+  @override
+  Future<void> writeValue(String name, String? value) async {
+    if (value == null) {
+      values.remove(name);
+    } else {
+      values[name] = value;
+    }
+  }
 }

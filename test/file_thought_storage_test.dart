@@ -64,4 +64,18 @@ void main() {
     expect(again, first);
     expect(Directory('${directory.path}/images').listSync(), hasLength(1));
   });
+
+  test('keeps values beside the thoughts and forgets them on null', () async {
+    expect(await storage.readValue('ai'), isNull);
+
+    await storage.writeValue('ai', '{"model":"tidy-1"}');
+    expect(
+      await FileThoughtStorage(directory).readValue('ai'),
+      '{"model":"tidy-1"}',
+    );
+
+    await storage.writeValue('ai', null);
+    expect(await storage.readValue('ai'), isNull);
+    await storage.writeValue('ai', null);
+  });
 }

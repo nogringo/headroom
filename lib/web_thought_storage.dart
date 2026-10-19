@@ -76,6 +76,19 @@ class WebThoughtStorage implements ThoughtStorage {
     }
     await _completion(transaction);
   }
+
+  @override
+  Future<String?> readValue(String name) async =>
+      web.window.localStorage.getItem('$key.$name');
+
+  @override
+  Future<void> writeValue(String name, String? value) async {
+    if (value == null) {
+      web.window.localStorage.removeItem('$key.$name');
+    } else {
+      web.window.localStorage.setItem('$key.$name', value);
+    }
+  }
 }
 
 Future<T> _result<T extends JSAny?>(web.IDBRequest request) {

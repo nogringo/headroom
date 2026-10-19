@@ -13,6 +13,11 @@ abstract interface class ThoughtStorage {
   Future<String> saveImage(Uint8List bytes);
   Future<Uint8List> readImage(String name);
   Future<void> deleteImagesExcept(Set<String> keep);
+
+  /// Small documents kept beside the thoughts, such as settings. Null when
+  /// [name] was never written, or was written null.
+  Future<String?> readValue(String name);
+  Future<void> writeValue(String name, String? value);
 }
 
 String encodeThoughts(List<Thought> thoughts) => jsonEncode(thoughts);

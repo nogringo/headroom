@@ -7,7 +7,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:headroom/main.dart';
 import 'package:headroom/thought.dart';
 import 'package:headroom/thought_store.dart';
+import 'package:headroom/tidier.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
+import 'ai_replies.dart';
 import 'in_memory_storage.dart';
 
 final png = base64Decode(
@@ -20,6 +24,7 @@ final otherPng = base64Decode(
 void main() {
   late InMemoryStorage storage;
   late ThoughtStore store;
+  late Tidier tidier;
   Uint8List? clipboardImage;
   String? clipboardText;
   Uint8List? copiedImage;
@@ -29,6 +34,8 @@ void main() {
     WidgetTester tester, [
     List<Thought> initial = const [],
     Map<String, Uint8List> images = const {},
+    // Sets up an AI answered by this, when given.
+    Future<http.Response> Function(http.Request)? ai,
   ]) async {
     clipboardImage = null;
     clipboardText = null;
@@ -66,9 +73,17 @@ void main() {
     });
 
     storage = InMemoryStorage(initial)..images.addAll(images);
+    if (ai != null) storage.values['ai'] = jsonEncode(testAi);
     store = ThoughtStore(storage);
     await store.load();
-    await tester.pumpWidget(HeadroomApp(store: store));
+    tidier = Tidier(
+      store,
+      storage,
+      client: MockClient(ai ?? (_) => throw StateError('No AI set up')),
+      delay: Duration.zero,
+    );
+    await tidier.load();
+    await tester.pumpWidget(HeadroomApp(store: store, tidier: tidier));
     await tester.pumpAndSettle();
   }
 
@@ -80,7 +95,7 @@ void main() {
   );
 
   Finder listedImage() => find.descendant(
-    of: find.byType(AnimatedList),
+    of: find.byType(SliverAnimatedList),
     matching: find.byType(Image),
   );
 
@@ -823,5 +838,214 @@ void main() {
 
     expect(find.text("Qu'est-ce que tu as en tête ?"), findsOneWidget);
     expect(find.text("Ce que tu notes s'affiche ici."), findsOneWidget);
+  });
+
+  group('with an AI', () {
+    testWidgets('lists thoughts under the theme the AI gives them', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      await pumpApp(
+        tester,
+        [
+          Thought(
+            id: '2',
+            text: 'Call the garage',
+            createdAt: now,
+            theme: 'Car',
+          ),
+          Thought(
+            id: '1',
+            text: 'Dentist on Monday',
+            createdAt: now.subtract(const Duration(days: 3)),
+            theme: 'Health',
+          ),
+        ],
+        const {},
+        (request) async => sortAllInto(request, 'Errands'),
+      );
+
+      await tester.enterText(find.byType(TextField), 'Buy bread');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pumpAndSettle();
+      expect(store.thoughts.first.theme, 'Errands');
+
+      await tester.tap(find.text('By theme'));
+      await tester.pumpAndSettle();
+
+      double top(String text) => tester.getTopLeft(find.text(text)).dy;
+      expect(find.text('Today'), findsNothing);
+      expect(top('Errands'), lessThan(top('Buy bread')));
+      expect(top('Buy bread'), lessThan(top('Car')));
+      expect(top('Car'), lessThan(top('Call the garage')));
+      expect(top('Call the garage'), lessThan(top('Health')));
+      expect(top('Health'), lessThan(top('Dentist on Monday')));
+
+      await tester.tap(find.text('By day'));
+      await tester.pumpAndSettle();
+      expect(find.text('Today'), findsOneWidget);
+      expect(find.text('Errands'), findsNothing);
+    });
+
+    testWidgets('merges the thoughts it finds repeated, until undone', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      await pumpApp(
+        tester,
+        [
+          Thought(id: '2', text: 'Buy milk', createdAt: now, theme: 'Errands'),
+          Thought(id: '1', text: 'milk!!', createdAt: now, theme: 'Errands'),
+        ],
+        const {},
+        (request) async => chatReply({
+          'themes': {},
+          'merges': [
+            {
+              'thoughts': [1, 2],
+              'text': 'Buy lots of milk',
+            },
+          ],
+        }),
+      );
+
+      expect(find.text('Clean-up'), findsOneWidget);
+      expect(find.text('These thoughts repeat each other:'), findsOneWidget);
+      expect(find.text('Buy lots of milk'), findsOneWidget);
+
+      await tester.tap(find.text('Merge'));
+      await tester.pumpAndSettle();
+      expect(find.text('Clean-up'), findsNothing);
+      expect(find.text('milk!!'), findsNothing);
+      expect(store.thoughts.map((t) => t.text), ['Buy lots of milk']);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(store.thoughts.map((t) => t.text), ['Buy milk', 'milk!!']);
+      expect(find.text('Clean-up'), findsNothing);
+    });
+
+    testWidgets('an out-of-date thought can be kept or deleted', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      await pumpApp(
+        tester,
+        [
+          Thought(
+            id: '2',
+            text: 'Party on Friday',
+            createdAt: now,
+            theme: 'Fun',
+          ),
+          Thought(
+            id: '1',
+            text: 'Dentist on Monday',
+            createdAt: now,
+            theme: 'Health',
+          ),
+        ],
+        const {},
+        (request) async => chatReply({
+          'themes': {},
+          'outdated': [1, 2],
+        }),
+      );
+
+      expect(find.text('This thought looks out of date:'), findsOneWidget);
+      expect(find.text('2 suggestions'), findsOneWidget);
+
+      await tester.tap(find.text('Keep'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 suggestion'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+      expect(find.text('Clean-up'), findsNothing);
+      expect(find.text('Thought deleted'), findsOneWidget);
+      expect(store.thoughts.map((t) => t.text), ['Party on Friday']);
+    });
+
+    testWidgets('a tidying error stays shown until a retry works', (
+      tester,
+    ) async {
+      var refuse = true;
+      await pumpApp(
+        tester,
+        [Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now())],
+        const {},
+        (request) async => refuse
+            ? http.Response(
+                jsonEncode({
+                  'error': {'code': '1113', 'message': 'Insufficient balance.'},
+                }),
+                429,
+              )
+            : sortAllInto(request, 'Errands'),
+      );
+      const error =
+          "Tidying paused: the AI service's limit or credit is used up.";
+      expect(find.text(error), findsOneWidget);
+      expect(find.text('Insufficient balance.'), findsOneWidget);
+
+      refuse = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(error), findsNothing);
+      expect(find.text('Insufficient balance.'), findsNothing);
+      expect(store.thoughts.single.theme, 'Errands');
+    });
+
+    testWidgets('is set up from the broom button', (tester) async {
+      await pumpApp(
+        tester,
+        [Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now())],
+        const {},
+        (request) async => request.method == 'GET'
+            ? http.Response(
+                jsonEncode({
+                  'data': [
+                    {'id': 'claude-opus-5-5'},
+                    {'id': 'claude-haiku-5-5'},
+                  ],
+                }),
+                200,
+              )
+            : sortAllInto(request, 'Errands'),
+      );
+      await tidier.configure(null);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('AI tidying'));
+      await tester.pumpAndSettle();
+      expect(find.text('Turn off'), findsNothing);
+      expect(find.text('Z.ai'), findsOneWidget);
+      expect(find.text('DeepSeek'), findsOneWidget);
+      await tester.tap(find.text('Claude'));
+      await tester.pump();
+      expect(find.text('https://api.anthropic.com/v1'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'API key'), 'sk');
+      await tester.enterText(find.widgetWithText(TextField, 'Model'), 'haiku');
+      await tester.pumpAndSettle();
+      expect(find.text('claude-opus-5-5'), findsNothing);
+      await tester.tap(find.text('claude-haiku-5-5'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(tidier.settings?.baseUrl, 'https://api.anthropic.com/v1');
+      expect(tidier.settings?.apiKey, 'sk');
+      expect(tidier.settings?.model, 'claude-haiku-5-5');
+      expect(find.text('By theme'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('AI tidying'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Turn off'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Turn off'));
+      await tester.pumpAndSettle();
+      expect(tidier.settings, isNull);
+    });
   });
 }

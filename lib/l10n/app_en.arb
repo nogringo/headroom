@@ -91,5 +91,130 @@
   "imageNotCopied": "Couldn't copy the image.",
   "@imageNotCopied": {
     "description": "Shown in the full screen viewer when copying the image failed."
+  },
+  "byDay": "By day",
+  "@byDay": {
+    "description": "Shows the thoughts under the day they were noted."
+  },
+  "byTheme": "By theme",
+  "@byTheme": {
+    "description": "Shows the thoughts under the theme the AI gave them."
+  },
+  "noTheme": "No theme",
+  "@noTheme": {
+    "description": "Heading above the thoughts the AI has not sorted yet, or that hold only images."
+  },
+  "tidySettings": "AI tidying",
+  "@tidySettings": {
+    "description": "Tooltip of the button that sets up the AI, and title of its dialog."
+  },
+  "tidying": "Tidying",
+  "@tidying": {
+    "description": "Tooltip of the same button while the AI is sorting the thoughts."
+  },
+  "tidyIntro": "An AI of your choice sorts your thoughts by theme as you note them, and spots the ones to merge or delete. Any service compatible with OpenAI's API works, including a model running on your computer.",
+  "@tidyIntro": {
+    "description": "First paragraph of the AI tidying dialog."
+  },
+  "tidyAddress": "API address",
+  "@tidyAddress": {
+    "description": "Label of the field holding the base URL of the AI service."
+  },
+  "tidyAddressInvalid": "Enter an address starting with https:// or http://",
+  "@tidyAddressInvalid": {
+    "description": "Shown under the address field when it does not hold a web address."
+  },
+  "tidyKey": "API key",
+  "@tidyKey": {
+    "description": "Label of the field holding the key of the AI service."
+  },
+  "tidyKeyHelp": "Not needed for a local model",
+  "@tidyKeyHelp": {
+    "description": "Helper text under the API key field."
+  },
+  "showKey": "Show key",
+  "@showKey": {
+    "description": "Tooltip of the button that reveals the API key."
+  },
+  "hideKey": "Hide key",
+  "@hideKey": {
+    "description": "Tooltip of the button that hides the API key."
+  },
+  "tidyModel": "Model",
+  "@tidyModel": {
+    "description": "Label of the field holding the name of the AI model."
+  },
+  "tidyPrivacy": "The text of your thoughts is sent to this service. Images stay on this device.",
+  "@tidyPrivacy": {
+    "description": "Privacy note at the bottom of the AI tidying dialog."
+  },
+  "turnOff": "Turn off",
+  "@turnOff": {
+    "description": "Button of the AI tidying dialog that stops tidying and forgets the settings."
+  },
+  "tidyUnreachable": "Tidying paused: can't reach the AI service.",
+  "@tidyUnreachable": {
+    "description": "Inline error when the AI service could not be reached."
+  },
+  "tidyRejectedKey": "Tidying paused: the API key was refused.",
+  "@tidyRejectedKey": {
+    "description": "Inline error when the AI service refused the API key."
+  },
+  "tidyNotFound": "Tidying paused: address or model not found.",
+  "@tidyNotFound": {
+    "description": "Inline error when the AI service answered 404."
+  },
+  "tidyLimited": "Tidying paused: the AI service's limit or credit is used up.",
+  "@tidyLimited": {
+    "description": "Inline error when the AI service answered 429, which means a rate limit or no credit left. The service's own message shows below it."
+  },
+  "tidyFailed": "Tidying paused: the AI service answered unexpectedly.",
+  "@tidyFailed": {
+    "description": "Inline error when the AI service failed or its reply could not be read."
+  },
+  "retry": "Retry",
+  "@retry": {
+    "description": "Button next to a tidying error that tries again."
+  },
+  "cleanUp": "Clean-up",
+  "@cleanUp": {
+    "description": "Title of the card proposing to merge or delete thoughts."
+  },
+  "suggestionCount": "{count, plural, =1{1 suggestion} other{{count} suggestions}}",
+  "@suggestionCount": {
+    "description": "How many clean-ups the AI proposes, shown on the card.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "mergeIntro": "These thoughts repeat each other:",
+  "@mergeIntro": {
+    "description": "Above the thoughts the AI proposes to merge."
+  },
+  "mergeResult": "Merged, they would read:",
+  "@mergeResult": {
+    "description": "Above the thought that would replace them."
+  },
+  "keepApart": "Keep apart",
+  "@keepApart": {
+    "description": "Declines the proposed merge."
+  },
+  "merge": "Merge",
+  "@merge": {
+    "description": "Accepts the proposed merge."
+  },
+  "outdatedIntro": "This thought looks out of date:",
+  "@outdatedIntro": {
+    "description": "Above the thought the AI proposes to delete."
+  },
+  "keep": "Keep",
+  "@keep": {
+    "description": "Declines deleting the thought the AI found out of date."
+  },
+  "thoughtsMerged": "Thoughts merged",
+  "@thoughtsMerged": {
+    "description": "Snackbar message after merging thoughts, with an undo action."
   }
 }

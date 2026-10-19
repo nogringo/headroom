@@ -50,6 +50,24 @@ class FileThoughtStorage implements ThoughtStorage {
       if (!keep.contains(entity.uri.pathSegments.last)) await entity.delete();
     }
   }
+
+  File _value(String name) => File('${directory.path}/$name.json');
+
+  @override
+  Future<String?> readValue(String name) async {
+    final file = _value(name);
+    return await file.exists() ? file.readAsString() : null;
+  }
+
+  @override
+  Future<void> writeValue(String name, String? value) async {
+    final file = _value(name);
+    if (value != null) {
+      await _writeAtomically(file, utf8.encode(value));
+    } else if (await file.exists()) {
+      await file.delete();
+    }
+  }
 }
 
 // Write then rename, so a crash mid-write never leaves a truncated file.

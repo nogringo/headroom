@@ -8,20 +8,25 @@ import 'file_thought_storage.dart'
 import 'l10n/app_localizations.dart';
 import 'theme.dart';
 import 'thought_store.dart';
+import 'tidier.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Headroom's own menus replace the browser's, fields included.
   if (kIsWeb) await BrowserContextMenu.disableContextMenu();
-  final store = ThoughtStore(await openThoughtStorage());
+  final storage = await openThoughtStorage();
+  final store = ThoughtStore(storage);
   await store.load();
-  runApp(HeadroomApp(store: store));
+  final tidier = Tidier(store, storage);
+  await tidier.load();
+  runApp(HeadroomApp(store: store, tidier: tidier));
 }
 
 class HeadroomApp extends StatelessWidget {
-  const HeadroomApp({super.key, required this.store});
+  const HeadroomApp({super.key, required this.store, required this.tidier});
 
   final ThoughtStore store;
+  final Tidier tidier;
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +37,7 @@ class HeadroomApp extends StatelessWidget {
       darkTheme: buildTheme(Brightness.dark),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: CaptureScreen(store: store),
+      home: CaptureScreen(store: store, tidier: tidier),
     );
   }
 }

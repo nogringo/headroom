@@ -20,6 +20,7 @@ void main() {
 
   tearDown(() {
     web.window.localStorage.removeItem(storage.key);
+    web.window.localStorage.removeItem('${storage.key}.ai');
     web.window.indexedDB.deleteDatabase(storage.database);
   });
 
@@ -49,5 +50,18 @@ void main() {
 
     expect(await storage.readImage(kept), [1, 2, 3]);
     await expectLater(storage.readImage(dropped), throwsStateError);
+  });
+
+  test('keeps values in localStorage and forgets them on null', () async {
+    expect(await storage.readValue('ai'), isNull);
+
+    await storage.writeValue('ai', '{"model":"tidy-1"}');
+    expect(
+      await WebThoughtStorage(key: storage.key).readValue('ai'),
+      '{"model":"tidy-1"}',
+    );
+
+    await storage.writeValue('ai', null);
+    expect(await storage.readValue('ai'), isNull);
   });
 }

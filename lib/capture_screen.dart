@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
+import 'ai_settings_dialog.dart';
 import 'clipboard_image_io.dart'
     if (dart.library.js_interop) 'clipboard_image_web.dart';
 import 'day_label.dart';
@@ -15,6 +16,8 @@ import 'report_error.dart';
 import 'theme.dart';
 import 'thought.dart';
 import 'thought_store.dart';
+import 'tidier.dart';
+import 'tidy_client.dart';
 
 const _contentWidth = 640.0;
 
@@ -24,22 +27,37 @@ const _gutter = 12.0;
 /// From the note's edge to its text, which the thoughts line up with.
 const _inset = 20.0;
 
-/// A heading for [day] when [thought] is null, else a thought noted that day.
-typedef _Row = ({DateTime day, Thought? thought});
+/// A heading for [group] when [thought] is null, else a thought in it. The
+/// group is a day, or a theme: '' for the thoughts without one.
+typedef _Row = ({Object group, Thought? thought});
 
-List<_Row> _rowsOf(List<Thought> thoughts) {
+List<_Row> _rowsOf(List<Thought> thoughts, {required bool byTheme}) {
+  if (byTheme) {
+    // In order of each theme's newest thought.
+    final themes = <String, List<Thought>>{};
+    for (final thought in thoughts) {
+      (themes[thought.theme ?? ''] ??= []).add(thought);
+    }
+    return [
+      for (final MapEntry(key: theme, value: members) in themes.entries) ...[
+        (group: theme, thought: null),
+        for (final thought in members) (group: theme, thought: thought),
+      ],
+    ];
+  }
   final rows = <_Row>[];
   DateTime? previous;
   for (final thought in thoughts) {
     final day = DateUtils.dateOnly(thought.createdAt);
-    if (day != previous) rows.add((day: day, thought: null));
-    rows.add((day: day, thought: thought));
+    if (day != previous) rows.add((group: day, thought: null));
+    rows.add((group: day, thought: thought));
     previous = day;
   }
   return rows;
 }
 
-Object _keyOf(_Row row) => row.thought?.id ?? row.day;
+// A record, so a theme never collides with a thought's id.
+Object _keyOf(_Row row) => row.thought?.id ?? (heading: row.group);
 
 /// Touch keyboards have a single key, kept for sending. On the web, the
 /// platform is the browser's OS.
@@ -51,9 +69,10 @@ bool _shiftEnterBreaksLine(TargetPlatform platform) => switch (platform) {
 };
 
 class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({super.key, required this.store});
+  const CaptureScreen({super.key, required this.store, required this.tidier});
 
   final ThoughtStore store;
+  final Tidier tidier;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -62,7 +81,7 @@ class CaptureScreen extends StatefulWidget {
 class _CaptureScreenState extends State<CaptureScreen> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
-  final _listKey = GlobalKey<AnimatedListState>();
+  var _listKey = GlobalKey<SliverAnimatedListState>();
   final _scroll = ScrollController();
   late final AppLifecycleListener _lifecycle;
   late final Timer _clock;
@@ -70,13 +89,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// The images pasted into the field, waiting to be sent.
   var _attachments = <PastedImage>[];
 
+  var _byTheme = false;
+
   /// What the list shows, kept in step with the store by [_syncRows].
-  late var _rows = _rowsOf(_store.thoughts);
+  late var _rows = _rowsOf(_store.thoughts, byTheme: _byTheme);
 
   /// Set while the thought swiped away is being removed.
   String? _swipedId;
 
   ThoughtStore get _store => widget.store;
+  Tidier get _tidier => widget.tidier;
 
   Duration get _motion => MediaQuery.disableAnimationsOf(context)
       ? Duration.zero
@@ -141,7 +163,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// headings that appear grow in, those that go away collapse.
   void _syncRows() {
     final from = _rows;
-    final to = _rows = _rowsOf(_store.thoughts);
+    final to = _rows = _rowsOf(_store.thoughts, byTheme: _byTheme);
     final list = _listKey.currentState;
     if (list == null) return;
     final kept = {for (final row in to) _keyOf(row)};
@@ -178,23 +200,54 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final index = _store.remove(thought.id);
     _swipedId = null;
     if (index == -1) return;
-    final l10n = AppLocalizations.of(context);
+    _offerUndo(
+      AppLocalizations.of(context).thoughtDeleted,
+      () => _store.restore(thought, index),
+    );
+  }
+
+  void _merge(Merge suggestion) {
+    final merged = _store.merge(suggestion.ids, suggestion.text);
+    if (merged == null) return;
+    _offerUndo(
+      AppLocalizations.of(context).thoughtsMerged,
+      () => _store.unmerge(merged),
+    );
+  }
+
+  void _offerUndo(String message, VoidCallback undo) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(l10n.thoughtDeleted),
+          content: Text(message),
           // A screen reader takes longer than the timeout to reach Undo.
           persist: MediaQuery.accessibleNavigationOf(context),
           action: SnackBarAction(
-            label: l10n.undo,
+            label: AppLocalizations.of(context).undo,
             onPressed: () {
-              if (mounted) _store.restore(thought, index);
+              if (mounted) undo();
             },
           ),
         ),
       );
   }
+
+  void _showByTheme(bool byTheme) {
+    if (byTheme == _byTheme) return;
+    setState(() {
+      _byTheme = byTheme;
+      _rows = _rowsOf(_store.thoughts, byTheme: byTheme);
+      // A fresh list, rather than every row sliding to its new place.
+      _listKey = GlobalKey();
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  void _openTidySettings() => showDialog<void>(
+    context: context,
+    builder: (_) => AiSettingsDialog(tidier: _tidier),
+  );
 
   Future<void> _edit(Thought thought) async {
     final edit = await showDialog<_Edit>(
@@ -357,9 +410,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 ),
               ),
             ),
+            ListenableBuilder(
+              listenable: Listenable.merge([_store, _tidier]),
+              builder: (context, _) => _buildToolbar(context),
+            ),
             Expanded(
               child: ListenableBuilder(
-                listenable: _store,
+                listenable: Listenable.merge([_store, _tidier]),
                 builder: (context, _) => _buildList(context),
               ),
             ),
@@ -369,9 +426,69 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
+  Widget _buildToolbar(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final tidier = _tidier;
+    final showViews =
+        _byTheme ||
+        tidier.settings != null ||
+        _store.thoughts.any((t) => t.theme != null);
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _contentWidth),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: _gutter),
+          child: Row(
+            children: [
+              if (showViews)
+                SegmentedButton<bool>(
+                  segments: [
+                    ButtonSegment(value: false, label: Text(l10n.byDay)),
+                    ButtonSegment(value: true, label: Text(l10n.byTheme)),
+                  ],
+                  selected: {_byTheme},
+                  onSelectionChanged: (selected) =>
+                      _showByTheme(selected.single),
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              const Spacer(),
+              IconButton(
+                tooltip: tidier.working ? l10n.tidying : l10n.tidySettings,
+                onPressed: _openTidySettings,
+                icon: tidier.working
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cleaning_services_outlined),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildList(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    final suggestion = _tidier.suggestions.firstOrNull;
+    final tidyFailure = switch (_tidier.failure) {
+      null => null,
+      TidyFailure.unreachable => l10n.tidyUnreachable,
+      TidyFailure.rejectedKey => l10n.tidyRejectedKey,
+      TidyFailure.notFound => l10n.tidyNotFound,
+      TidyFailure.limited => l10n.tidyLimited,
+      TidyFailure.failed => l10n.tidyFailed,
+    };
+    final errorStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.error,
+    );
 
     // The list spans the window so its scrollbar sits at the edge and the
     // margins scroll too. Its content keeps to the note's centered column.
@@ -386,11 +503,33 @@ class _CaptureScreenState extends State<CaptureScreen> {
             if (_store.saveFailed)
               Padding(
                 padding: inset.copyWith(top: 12),
-                child: Text(
-                  l10n.saveFailed,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
+                child: Text(l10n.saveFailed, style: errorStyle),
+              ),
+            if (tidyFailure != null)
+              Padding(
+                padding: inset.copyWith(top: 4, right: side),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(tidyFailure, style: errorStyle),
+                          if (_tidier.failureMessage case final message?)
+                            Text(
+                              message,
+                              style: theme.textTheme.bodySmall,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _tidier.retry,
+                      child: Text(l10n.retry),
+                    ),
+                  ],
                 ),
               ),
             Expanded(
@@ -407,18 +546,44 @@ class _CaptureScreenState extends State<CaptureScreen> {
                         ),
                       ),
                     ),
-                  AnimatedList(
-                    key: _listKey,
+                  CustomScrollView(
                     controller: _scroll,
-                    padding: EdgeInsets.fromLTRB(
-                      side,
-                      0,
-                      side,
-                      24 + MediaQuery.paddingOf(context).bottom,
-                    ),
-                    initialItemCount: _rows.length,
-                    itemBuilder: (context, index, animation) =>
-                        _buildRow(_rows[index], animation),
+                    slivers: [
+                      if (suggestion != null)
+                        SliverPadding(
+                          padding: EdgeInsets.fromLTRB(side, 12, side, 0),
+                          sliver: SliverToBoxAdapter(
+                            child: _CleanUpCard(
+                              suggestion: suggestion,
+                              count: _tidier.suggestions.length,
+                              thoughts: {
+                                for (final t in _store.thoughts) t.id: t,
+                              },
+                              onAccept: () => switch (suggestion) {
+                                final Merge merge => _merge(merge),
+                                Outdated(:final id) => _remove(
+                                  _store.thoughts.firstWhere((t) => t.id == id),
+                                ),
+                              },
+                              onDecline: () => _tidier.decline(suggestion),
+                            ),
+                          ),
+                        ),
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(
+                          side,
+                          0,
+                          side,
+                          24 + MediaQuery.paddingOf(context).bottom,
+                        ),
+                        sliver: SliverAnimatedList(
+                          key: _listKey,
+                          initialItemCount: _rows.length,
+                          itemBuilder: (context, index, animation) =>
+                              _buildRow(_rows[index], animation),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -437,7 +602,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       child: FadeTransition(
         opacity: eased,
         child: thought == null
-            ? _DayHeading(day: row.day)
+            ? _Heading(group: row.group)
             : _buildThought(thought),
       ),
     );
@@ -464,6 +629,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             text: thought.text,
             images: _imagesOf(thought),
             createdAt: thought.createdAt,
+            withDay: _byTheme,
             onTap: () => _edit(thought),
             onImageTap: (index) => _view(thought.images, index),
             onImageCopy: (index) => _copyImage(thought.images[index]),
@@ -492,22 +658,126 @@ class _Note extends StatelessWidget {
   );
 }
 
-class _DayHeading extends StatelessWidget {
-  const _DayHeading({required this.day});
+/// Names a day, or a theme: '' for the thoughts without one.
+class _Heading extends StatelessWidget {
+  const _Heading({required this.group});
 
-  final DateTime day;
+  final Object group;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsetsDirectional.fromSTEB(_inset, 24, _inset, 0),
-    child: Semantics(
-      header: true,
-      child: Text(
-        dayLabel(day, DateTime.now(), AppLocalizations.of(context)),
-        style: Theme.of(context).textTheme.titleSmall,
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(_inset, 24, _inset, 0),
+      child: Semantics(
+        header: true,
+        child: Text(switch (group) {
+          final DateTime day => dayLabel(day, DateTime.now(), l10n),
+          '' => l10n.noTheme,
+          _ => '$group',
+        }, style: Theme.of(context).textTheme.titleSmall),
       ),
-    ),
-  );
+    );
+  }
+}
+
+/// Proposes the AI's first clean-up: merging thoughts, or deleting one that
+/// looks out of date.
+class _CleanUpCard extends StatelessWidget {
+  const _CleanUpCard({
+    required this.suggestion,
+    required this.count,
+    required this.thoughts,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  final Suggestion suggestion;
+
+  /// Of suggestions waiting, this one included.
+  final int count;
+  final Map<String, Thought> thoughts;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final quoted = theme.textTheme.bodyLarge?.copyWith(
+      fontSize: 15,
+      color: scheme.onSurfaceVariant,
+    );
+    final concerned = [for (final id in suggestion.ids) ?thoughts[id]];
+
+    Widget quote(String text, TextStyle? style) => Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        text,
+        style: style,
+        maxLines: 4,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
+    final (intro, keepLabel, acceptLabel) = switch (suggestion) {
+      Merge() => (l10n.mergeIntro, l10n.keepApart, l10n.merge),
+      Outdated() => (l10n.outdatedIntro, l10n.keep, l10n.delete),
+    };
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: paperRadius,
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(_inset, 14, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      l10n.cleanUp,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 8),
+                  child: Text(
+                    l10n.suggestionCount(count),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(intro, style: theme.textTheme.bodySmall),
+            for (final thought in concerned)
+              if (thought.text.isNotEmpty) quote(thought.text, quoted),
+            if (suggestion case Merge(:final text)) ...[
+              const SizedBox(height: 12),
+              Text(l10n.mergeResult, style: theme.textTheme.bodySmall),
+              quote(text, theme.textTheme.bodyLarge),
+            ],
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(onPressed: onDecline, child: Text(keepLabel)),
+                const SizedBox(width: 8),
+                FilledButton(onPressed: onAccept, child: Text(acceptLabel)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ThoughtTile extends StatefulWidget {
@@ -515,6 +785,7 @@ class _ThoughtTile extends StatefulWidget {
     required this.text,
     required this.images,
     required this.createdAt,
+    required this.withDay,
     required this.onTap,
     required this.onImageTap,
     required this.onImageCopy,
@@ -524,6 +795,9 @@ class _ThoughtTile extends StatefulWidget {
   final String text;
   final List<ImageProvider> images;
   final DateTime createdAt;
+
+  /// Shows the day it was noted rather than the time, unless that is today.
+  final bool withDay;
   final VoidCallback onTap;
   final ValueChanged<int> onImageTap;
   final ValueChanged<int> onImageCopy;
@@ -542,11 +816,17 @@ class _ThoughtTileState extends State<_ThoughtTile> {
     final theme = Theme.of(context);
     final text = widget.text;
     final images = widget.images;
+    final createdAt = widget.createdAt;
+    final now = DateTime.now();
     final time = Text(
-      MaterialLocalizations.of(context).formatTimeOfDay(
-        TimeOfDay.fromDateTime(widget.createdAt),
-        alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
-      ),
+      widget.withDay && !DateUtils.isSameDay(createdAt, now)
+          ? dayLabel(createdAt, now, AppLocalizations.of(context))
+          : MaterialLocalizations.of(context).formatTimeOfDay(
+              TimeOfDay.fromDateTime(createdAt),
+              alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(
+                context,
+              ),
+            ),
       style: theme.textTheme.bodySmall,
     );
     // Touch screens have the swipe. Where a pointer hovers, a button takes

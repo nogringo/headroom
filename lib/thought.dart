@@ -4,6 +4,7 @@ class Thought {
     required this.text,
     this.images = const [],
     required this.createdAt,
+    this.theme,
   });
 
   factory Thought.fromJson(Map<String, dynamic> json) => Thought(
@@ -15,6 +16,7 @@ class Thought {
       if (json['image'] case final String image) image,
     ],
     createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
+    theme: json['theme'] as String?,
   );
 
   final String id;
@@ -26,10 +28,14 @@ class Thought {
   final List<String> images;
   final DateTime createdAt;
 
+  /// Given by the AI. Null until it has sorted the thought.
+  final String? theme;
+
   Map<String, Object> toJson() => {
     'id': id,
     'text': text,
     if (images.isNotEmpty) 'images': images,
     'createdAt': createdAt.toUtc().toIso8601String(),
+    if (theme case final String theme) 'theme': theme,
   };
 }

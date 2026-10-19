@@ -21,4 +21,18 @@ void main() {
     expect(thought.toJson(), isNot(contains('images')));
     expect(Thought.fromJson(thought.toJson()).images, isEmpty);
   });
+
+  test('keeps its theme, and writes none until it has one', () {
+    final unsorted = Thought(id: '1', text: 'Note', createdAt: DateTime(2026));
+    final sorted = Thought(
+      id: '2',
+      text: 'Note',
+      createdAt: DateTime(2026),
+      theme: 'Errands',
+    );
+
+    expect(unsorted.toJson(), isNot(contains('theme')));
+    expect(Thought.fromJson(unsorted.toJson()).theme, isNull);
+    expect(Thought.fromJson(sorted.toJson()).theme, 'Errands');
+  });
 }

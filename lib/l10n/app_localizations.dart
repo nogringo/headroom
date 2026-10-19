@@ -235,6 +235,186 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t copy the image.'**
   String get imageNotCopied;
+
+  /// Shows the thoughts under the day they were noted.
+  ///
+  /// In en, this message translates to:
+  /// **'By day'**
+  String get byDay;
+
+  /// Shows the thoughts under the theme the AI gave them.
+  ///
+  /// In en, this message translates to:
+  /// **'By theme'**
+  String get byTheme;
+
+  /// Heading above the thoughts the AI has not sorted yet, or that hold only images.
+  ///
+  /// In en, this message translates to:
+  /// **'No theme'**
+  String get noTheme;
+
+  /// Tooltip of the button that sets up the AI, and title of its dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'AI tidying'**
+  String get tidySettings;
+
+  /// Tooltip of the same button while the AI is sorting the thoughts.
+  ///
+  /// In en, this message translates to:
+  /// **'Tidying'**
+  String get tidying;
+
+  /// First paragraph of the AI tidying dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'An AI of your choice sorts your thoughts by theme as you note them, and spots the ones to merge or delete. Any service compatible with OpenAI\'s API works, including a model running on your computer.'**
+  String get tidyIntro;
+
+  /// Label of the field holding the base URL of the AI service.
+  ///
+  /// In en, this message translates to:
+  /// **'API address'**
+  String get tidyAddress;
+
+  /// Shown under the address field when it does not hold a web address.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an address starting with https:// or http://'**
+  String get tidyAddressInvalid;
+
+  /// Label of the field holding the key of the AI service.
+  ///
+  /// In en, this message translates to:
+  /// **'API key'**
+  String get tidyKey;
+
+  /// Helper text under the API key field.
+  ///
+  /// In en, this message translates to:
+  /// **'Not needed for a local model'**
+  String get tidyKeyHelp;
+
+  /// Tooltip of the button that reveals the API key.
+  ///
+  /// In en, this message translates to:
+  /// **'Show key'**
+  String get showKey;
+
+  /// Tooltip of the button that hides the API key.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide key'**
+  String get hideKey;
+
+  /// Label of the field holding the name of the AI model.
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get tidyModel;
+
+  /// Privacy note at the bottom of the AI tidying dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'The text of your thoughts is sent to this service. Images stay on this device.'**
+  String get tidyPrivacy;
+
+  /// Button of the AI tidying dialog that stops tidying and forgets the settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn off'**
+  String get turnOff;
+
+  /// Inline error when the AI service could not be reached.
+  ///
+  /// In en, this message translates to:
+  /// **'Tidying paused: can\'t reach the AI service.'**
+  String get tidyUnreachable;
+
+  /// Inline error when the AI service refused the API key.
+  ///
+  /// In en, this message translates to:
+  /// **'Tidying paused: the API key was refused.'**
+  String get tidyRejectedKey;
+
+  /// Inline error when the AI service answered 404.
+  ///
+  /// In en, this message translates to:
+  /// **'Tidying paused: address or model not found.'**
+  String get tidyNotFound;
+
+  /// Inline error when the AI service answered 429, which means a rate limit or no credit left. The service's own message shows below it.
+  ///
+  /// In en, this message translates to:
+  /// **'Tidying paused: the AI service\'s limit or credit is used up.'**
+  String get tidyLimited;
+
+  /// Inline error when the AI service failed or its reply could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Tidying paused: the AI service answered unexpectedly.'**
+  String get tidyFailed;
+
+  /// Button next to a tidying error that tries again.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// Title of the card proposing to merge or delete thoughts.
+  ///
+  /// In en, this message translates to:
+  /// **'Clean-up'**
+  String get cleanUp;
+
+  /// How many clean-ups the AI proposes, shown on the card.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 suggestion} other{{count} suggestions}}'**
+  String suggestionCount(int count);
+
+  /// Above the thoughts the AI proposes to merge.
+  ///
+  /// In en, this message translates to:
+  /// **'These thoughts repeat each other:'**
+  String get mergeIntro;
+
+  /// Above the thought that would replace them.
+  ///
+  /// In en, this message translates to:
+  /// **'Merged, they would read:'**
+  String get mergeResult;
+
+  /// Declines the proposed merge.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep apart'**
+  String get keepApart;
+
+  /// Accepts the proposed merge.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge'**
+  String get merge;
+
+  /// Above the thought the AI proposes to delete.
+  ///
+  /// In en, this message translates to:
+  /// **'This thought looks out of date:'**
+  String get outdatedIntro;
+
+  /// Declines deleting the thought the AI found out of date.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep'**
+  String get keep;
+
+  /// Snackbar message after merging thoughts, with an undo action.
+  ///
+  /// In en, this message translates to:
+  /// **'Thoughts merged'**
+  String get thoughtsMerged;
 }
 
 class _AppLocalizationsDelegate

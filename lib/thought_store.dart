@@ -8,6 +8,13 @@ import 'stored_image.dart';
 import 'thought.dart';
 import 'thought_storage.dart';
 
+/// The thought a [ThoughtStore.merge] made, and those it replaced with the
+/// index each was at, in list order.
+typedef Merged = ({
+  Thought merged,
+  List<({int index, Thought thought})> originals,
+});
+
 class ThoughtStore extends ChangeNotifier {
   ThoughtStore(this._storage);
 
@@ -61,7 +68,7 @@ class ThoughtStore extends ChangeNotifier {
   }
 
   /// Needs a non-blank [text], some [images], or both. A removed image is
-  /// deleted at the next [load].
+  /// deleted at the next [load]. New text drops the theme, to be sorted again.
   void update(String id, {required String text, required List<String> images}) {
     final index = _thoughts.indexWhere((t) => t.id == id);
     final trimmed = text.trim();
@@ -72,7 +79,61 @@ class ThoughtStore extends ChangeNotifier {
       text: trimmed,
       images: images,
       createdAt: thought.createdAt,
+      theme: trimmed == thought.text ? thought.theme : null,
     );
+    _changed();
+  }
+
+  /// Gives each thought named in [themes] its theme. Unknown ids are skipped.
+  void setThemes(Map<String, String> themes) {
+    var changed = false;
+    for (final (index, thought) in _thoughts.indexed) {
+      final theme = themes[thought.id];
+      if (theme == null || theme == thought.theme) continue;
+      _thoughts[index] = Thought(
+        id: thought.id,
+        text: thought.text,
+        images: thought.images,
+        createdAt: thought.createdAt,
+        theme: theme,
+      );
+      changed = true;
+    }
+    if (changed) _changed();
+  }
+
+  /// Replaces the thoughts [ids] with one holding [text] and all their
+  /// images. It takes the place, id and theme of the newest. Returns what
+  /// [unmerge] needs, or null when fewer than two of the thoughts are left.
+  Merged? merge(List<String> ids, String text) {
+    final trimmed = text.trim();
+    final originals = [
+      for (final (index, thought) in _thoughts.indexed)
+        if (ids.contains(thought.id)) (index: index, thought: thought),
+    ];
+    if (originals.length < 2 || trimmed.isEmpty) return null;
+    final newest = originals.first;
+    final merged = Thought(
+      id: newest.thought.id,
+      text: trimmed,
+      images: {for (final o in originals) ...o.thought.images}.toList(),
+      createdAt: newest.thought.createdAt,
+      theme: newest.thought.theme,
+    );
+    for (final o in originals.reversed) {
+      _thoughts.removeAt(o.index);
+    }
+    _thoughts.insert(newest.index, merged);
+    _changed();
+    return (merged: merged, originals: originals);
+  }
+
+  /// Puts back the thoughts a [merge] replaced.
+  void unmerge(Merged merged) {
+    _thoughts.removeWhere((t) => t.id == merged.merged.id);
+    for (final o in merged.originals) {
+      _thoughts.insert(o.index.clamp(0, _thoughts.length), o.thought);
+    }
     _changed();
   }
 
