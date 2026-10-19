@@ -19,5 +19,8 @@
   "noImageInClipboard": "Aucune image dans le presse-papier.",
   "imageNotAdded": "Impossible d'ajouter l'image.",
   "removeImage": "Retirer l'image",
-  "imageLabel": "Image"
+  "imageLabel": "Image",
+  "previousImage": "Image précédente",
+  "nextImage": "Image suivante",
+  "imageAlreadyAdded": "Image déjà ajoutée."
 }

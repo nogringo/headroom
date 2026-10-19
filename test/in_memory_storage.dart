@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:headroom/thought.dart';
 import 'package:headroom/thought_storage.dart';
 
@@ -10,7 +11,6 @@ class InMemoryStorage implements ThoughtStorage {
   List<Thought> saved;
   final images = <String, Uint8List>{};
   bool failWrites = false;
-  var _imageCount = 0;
 
   @override
   Future<List<Thought>> read() async => List.of(saved);
@@ -23,7 +23,8 @@ class InMemoryStorage implements ThoughtStorage {
 
   @override
   Future<String> saveImage(Uint8List bytes) async {
-    final name = 'image${_imageCount++}';
+    // Named by content like the real storages, without their isolate hop.
+    final name = '${sha256.convert(bytes)}';
     images[name] = bytes;
     return name;
   }

@@ -30,7 +30,7 @@ void main() {
     final second = Thought(
       id: '2',
       text: '',
-      image: 'photo',
+      images: ['photo', 'sketch'],
       createdAt: DateTime(2026, 10, 19, 10),
     );
     await storage.write([first]);
@@ -38,7 +38,10 @@ void main() {
     final loaded = await storage.read();
 
     expect(loaded.map((t) => t.text), ['', 'Call the garage']);
-    expect(loaded.map((t) => t.image), ['photo', null]);
+    expect(loaded.map((t) => t.images), [
+      ['photo', 'sketch'],
+      isEmpty,
+    ]);
     expect(loaded.last.createdAt, first.createdAt);
     expect(File('${directory.path}/thoughts.json.tmp').existsSync(), isFalse);
   });
@@ -52,5 +55,13 @@ void main() {
 
     expect(await storage.readImage(kept), [1, 2, 3]);
     await expectLater(storage.readImage(dropped), throwsA(isA<IOException>()));
+  });
+
+  test('stores the same image once, under the same name', () async {
+    final first = await storage.saveImage(Uint8List.fromList([1, 2, 3]));
+    final again = await storage.saveImage(Uint8List.fromList([1, 2, 3]));
+
+    expect(again, first);
+    expect(Directory('${directory.path}/images').listSync(), hasLength(1));
   });
 }

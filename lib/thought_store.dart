@@ -29,7 +29,9 @@ class ThoughtStore extends ChangeNotifier {
     // Drops images pasted but never sent, and those of deleted thoughts.
     // Done here rather than on delete so that undo keeps working.
     try {
-      await _storage.deleteImagesExcept({for (final t in _thoughts) ?t.image});
+      await _storage.deleteImagesExcept({
+        for (final t in _thoughts) ...t.images,
+      });
     } catch (error, stack) {
       reportError(error, stack);
     }
@@ -40,15 +42,15 @@ class ThoughtStore extends ChangeNotifier {
 
   ImageProvider imageNamed(String name) => StoredImage(_storage, name);
 
-  /// Needs a non-blank [text], an [image], or both.
-  Thought? add(String text, {String? image}) {
+  /// Needs a non-blank [text], some [images], or both.
+  Thought? add(String text, {List<String> images = const []}) {
     final trimmed = text.trim();
-    if (trimmed.isEmpty && image == null) return null;
+    if (trimmed.isEmpty && images.isEmpty) return null;
     final now = DateTime.now();
     final thought = Thought(
       id: '${now.microsecondsSinceEpoch}',
       text: trimmed,
-      image: image,
+      images: images,
       createdAt: now,
     );
     _thoughts.insert(0, thought);
@@ -56,17 +58,17 @@ class ThoughtStore extends ChangeNotifier {
     return thought;
   }
 
-  /// Needs a non-blank [text], an [image], or both. A replaced or removed
-  /// image is deleted at the next [load].
-  void update(String id, {required String text, required String? image}) {
+  /// Needs a non-blank [text], some [images], or both. A removed image is
+  /// deleted at the next [load].
+  void update(String id, {required String text, required List<String> images}) {
     final index = _thoughts.indexWhere((t) => t.id == id);
     final trimmed = text.trim();
-    if (index == -1 || (trimmed.isEmpty && image == null)) return;
+    if (index == -1 || (trimmed.isEmpty && images.isEmpty)) return;
     final thought = _thoughts[index];
     _thoughts[index] = Thought(
       id: thought.id,
       text: trimmed,
-      image: image,
+      images: images,
       createdAt: thought.createdAt,
     );
     _changed();

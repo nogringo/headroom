@@ -31,8 +31,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
   late final AppLifecycleListener _lifecycle;
   late final Timer _clock;
 
-  /// The image pasted into the field, waiting to be sent.
-  PastedImage? _attachment;
+  /// The images pasted into the field, waiting to be sent.
+  var _attachments = <PastedImage>[];
 
   ThoughtStore get _store => widget.store;
 
@@ -63,9 +63,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   void _capture() {
-    if (_store.add(_input.text, image: _attachment?.name) == null) return;
+    final images = [for (final pasted in _attachments) pasted.name];
+    if (_store.add(_input.text, images: images) == null) return;
     _input.clear();
-    setState(() => _attachment = null);
+    setState(() => _attachments = []);
     _inputFocus.requestFocus();
     _listKey.currentState?.insertItem(0, duration: _motion);
     if (_scroll.hasClients && _scroll.offset > 0) {
@@ -122,28 +123,27 @@ class _CaptureScreenState extends State<CaptureScreen> {
       ),
     );
     if (edit != null) {
-      _store.update(thought.id, text: edit.text, image: edit.image);
+      _store.update(thought.id, text: edit.text, images: edit.images);
     }
   }
 
-  void _view(ImageProvider image) => showDialog<void>(
+  void _view(List<ImageProvider> images, int index) => showDialog<void>(
     context: context,
     barrierColor: Colors.black87,
     useSafeArea: false,
-    builder: (_) => _ImageViewer(image: image),
+    builder: (_) => _ImageViewer(images: images, initialIndex: index),
   );
 
-  ImageProvider? _imageOf(Thought thought) => switch (thought.image) {
-    null => null,
-    final name => _store.imageNamed(name),
-  };
+  List<ImageProvider> _imagesOf(Thought thought) => [
+    for (final name in thought.images) _store.imageNamed(name),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final inputStyle = theme.textTheme.displaySmall;
-    final attachment = _attachment;
+    final attachments = _attachments;
 
     return Scaffold(
       body: SafeArea(
@@ -167,8 +167,18 @@ class _CaptureScreenState extends State<CaptureScreen> {
                             child: ImagePaste(
                               store: _store,
                               focusNode: _inputFocus,
-                              onImage: (image) =>
-                                  setState(() => _attachment = image),
+                              onImage: (image) {
+                                if (_attachments.any(
+                                  (pasted) => pasted.name == image.name,
+                                )) {
+                                  _showError(l10n.imageAlreadyAdded);
+                                } else {
+                                  setState(
+                                    () =>
+                                        _attachments = [..._attachments, image],
+                                  );
+                                }
+                              },
                               onError: _showError,
                               builder: (contextMenuBuilder) => TextField(
                                 controller: _input,
@@ -206,7 +216,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                               tooltip: l10n.captureButton,
                               onPressed:
                                   value.text.trim().isEmpty &&
-                                      attachment == null
+                                      attachments.isEmpty
                                   ? null
                                   : _capture,
                               icon: const Icon(Icons.arrow_upward_rounded),
@@ -214,12 +224,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           ),
                         ],
                       ),
-                      if (attachment != null)
+                      if (attachments.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 12),
-                          child: _AttachmentPreview(
-                            image: attachment.image,
-                            onRemove: () => setState(() => _attachment = null),
+                          child: _AttachmentsPreview(
+                            images: attachments,
+                            onRemove: (removed) => setState(
+                              () => _attachments = [
+                                for (final pasted in _attachments)
+                                  if (pasted != removed) pasted,
+                              ],
+                            ),
                           ),
                         ),
                     ],
@@ -306,7 +321,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Widget _buildItem(Thought thought, Animation<double> animation, String age) {
     final eased = animation.drive(CurveTween(curve: Curves.easeOutCubic));
     final l10n = AppLocalizations.of(context);
-    final image = _imageOf(thought);
+    final images = _imagesOf(thought);
 
     return SizeTransition(
       sizeFactor: eased,
@@ -327,10 +342,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
             onDismissed: (_) => _remove(thought, swiped: true),
             child: _ThoughtTile(
               text: thought.text,
-              image: image,
+              images: images,
               age: age,
               onTap: () => _edit(thought),
-              onImageTap: image == null ? null : () => _view(image),
+              onImageTap: (index) => _view(images, index),
               onDelete: () => _remove(thought),
             ),
           ),
@@ -343,7 +358,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
 class _ThoughtTile extends StatefulWidget {
   const _ThoughtTile({
     required this.text,
-    required this.image,
+    required this.images,
     required this.age,
     required this.onTap,
     required this.onImageTap,
@@ -351,10 +366,10 @@ class _ThoughtTile extends StatefulWidget {
   });
 
   final String text;
-  final ImageProvider? image;
+  final List<ImageProvider> images;
   final String age;
   final VoidCallback onTap;
-  final VoidCallback? onImageTap;
+  final ValueChanged<int> onImageTap;
   final VoidCallback onDelete;
 
   @override
@@ -369,7 +384,7 @@ class _ThoughtTileState extends State<_ThoughtTile> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final text = widget.text;
-    final image = widget.image;
+    final images = widget.images;
     // Touch screens have the swipe. Where a pointer hovers, a button shows up
     // on hover, or on keyboard focus.
     final deleteButton =
@@ -405,16 +420,23 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                     children: [
                       if (text.isNotEmpty)
                         Text(text, style: theme.textTheme.bodyLarge),
-                      if (image != null)
+                      if (images.isNotEmpty)
                         Padding(
                           padding: EdgeInsets.only(top: text.isEmpty ? 2 : 10),
-                          child: _ImageThumbnail(
-                            image: image,
-                            maxHeight: 160,
-                            onTap: widget.onImageTap,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final (index, image) in images.indexed)
+                                _ImageThumbnail(
+                                  image: image,
+                                  maxHeight: images.length == 1 ? 160 : 112,
+                                  onTap: () => widget.onImageTap(index),
+                                ),
+                            ],
                           ),
                         ),
-                      SizedBox(height: image == null ? 4 : 8),
+                      SizedBox(height: images.isEmpty ? 4 : 8),
                       Text(widget.age, style: theme.textTheme.bodySmall),
                     ],
                   ),
@@ -478,77 +500,217 @@ class _ImageThumbnail extends StatelessWidget {
   }
 }
 
-class _AttachmentPreview extends StatelessWidget {
-  const _AttachmentPreview({
-    required this.image,
+class _AttachmentsPreview extends StatelessWidget {
+  const _AttachmentsPreview({
+    required this.images,
     required this.onRemove,
     this.maxHeight = 96,
   });
 
-  final ImageProvider image;
-  final VoidCallback onRemove;
+  final List<PastedImage> images;
+  final ValueChanged<PastedImage> onRemove;
   final double maxHeight;
 
   @override
   Widget build(BuildContext context) {
-    // Beside the image rather than over it: its width is 0 until decoded.
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final removeImage = AppLocalizations.of(context).removeImage;
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
       children: [
-        Flexible(
-          child: _ImageThumbnail(image: image, maxHeight: maxHeight),
-        ),
-        const SizedBox(width: 4),
-        IconButton.filledTonal(
-          visualDensity: VisualDensity.compact,
-          iconSize: 16,
-          tooltip: AppLocalizations.of(context).removeImage,
-          onPressed: onRemove,
-          icon: const Icon(Icons.close_rounded),
-        ),
+        for (final pasted in images)
+          // Beside the image rather than over it: its width is 0 until decoded.
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Flexible(
+                child: _ImageThumbnail(
+                  image: pasted.image,
+                  maxHeight: maxHeight,
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton.filledTonal(
+                visualDensity: VisualDensity.compact,
+                iconSize: 16,
+                tooltip: removeImage,
+                onPressed: () => onRemove(pasted),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
       ],
     );
   }
 }
 
-class _ImageViewer extends StatelessWidget {
-  const _ImageViewer({required this.image});
+class _ImageViewer extends StatefulWidget {
+  const _ImageViewer({required this.images, required this.initialIndex});
 
-  final ImageProvider image;
+  final List<ImageProvider> images;
+  final int initialIndex;
+
+  @override
+  State<_ImageViewer> createState() => _ImageViewerState();
+}
+
+class _ImageViewerState extends State<_ImageViewer> {
+  late final _pages = PageController(initialPage: widget.initialIndex);
+  late var _index = widget.initialIndex;
+  var _zoomed = false;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  void _turn(int by) {
+    final page = _index + by;
+    if (page < 0 || page >= widget.images.length) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pages.jumpToPage(page);
+    } else {
+      _pages.animateToPage(
+        page,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final count = widget.images.length;
     void close() => Navigator.pop(context);
-    return Material(
-      type: MaterialType.transparency,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          GestureDetector(
-            onTap: close,
-            child: InteractiveViewer(
-              maxScale: 6,
-              child: Image(
-                image: image,
-                semanticLabel: AppLocalizations.of(context).imageLabel,
-              ),
+    // Dark discs keep the buttons readable over light images.
+    final buttonStyle = IconButton.styleFrom(
+      backgroundColor: Colors.black54,
+      foregroundColor: Colors.white,
+    );
+
+    Widget arrow(AlignmentGeometry alignment, int by) {
+      final page = _index + by;
+      if (page < 0 || page >= count) return const SizedBox.shrink();
+      return Align(
+        alignment: alignment,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: IconButton(
+            style: buttonStyle,
+            tooltip: by < 0 ? l10n.previousImage : l10n.nextImage,
+            onPressed: () => _turn(by),
+            icon: Icon(
+              by < 0 ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
             ),
           ),
-          SafeArea(
-            child: Align(
-              alignment: AlignmentDirectional.topEnd,
-              child: IconButton(
-                color: Colors.white,
-                tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-                onPressed: close,
-                icon: const Icon(Icons.close_rounded),
+        ),
+      );
+    }
+
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _turn(-1),
+        const SingleActivator(LogicalKeyboardKey.arrowRight): () => _turn(1),
+      },
+      child: Focus(
+        autofocus: true,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              PageView.builder(
+                controller: _pages,
+                // A zoomed image pans instead of turning the page.
+                physics: _zoomed ? const NeverScrollableScrollPhysics() : null,
+                itemCount: count,
+                onPageChanged: (index) => setState(() {
+                  _index = index;
+                  _zoomed = false;
+                }),
+                itemBuilder: (context, index) => GestureDetector(
+                  onTap: close,
+                  child: _ZoomableImage(
+                    image: widget.images[index],
+                    onZoomChanged: (zoomed) => setState(() => _zoomed = zoomed),
+                  ),
+                ),
               ),
-            ),
+              if (count > 1)
+                SafeArea(
+                  child: Stack(
+                    children: [
+                      arrow(AlignmentDirectional.centerStart, -1),
+                      arrow(AlignmentDirectional.centerEnd, 1),
+                    ],
+                  ),
+                ),
+              SafeArea(
+                child: Align(
+                  alignment: AlignmentDirectional.topEnd,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: IconButton(
+                      style: buttonStyle,
+                      tooltip: MaterialLocalizations.of(context)
+                          .closeButtonTooltip,
+                      onPressed: close,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
+}
+
+class _ZoomableImage extends StatefulWidget {
+  const _ZoomableImage({required this.image, required this.onZoomChanged});
+
+  final ImageProvider image;
+  final ValueChanged<bool> onZoomChanged;
+
+  @override
+  State<_ZoomableImage> createState() => _ZoomableImageState();
+}
+
+class _ZoomableImageState extends State<_ZoomableImage> {
+  final _transform = TransformationController();
+  var _zoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _transform.addListener(() {
+      final zoomed = _transform.value.getMaxScaleOnAxis() > 1.01;
+      if (zoomed == _zoomed) return;
+      _zoomed = zoomed;
+      widget.onZoomChanged(zoomed);
+    });
+  }
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => InteractiveViewer(
+    transformationController: _transform,
+    maxScale: 6,
+    child: Image(
+      image: widget.image,
+      semanticLabel: AppLocalizations.of(context).imageLabel,
+    ),
+  );
 }
 
 class _SwipeBackground extends StatelessWidget {
@@ -583,7 +745,7 @@ class _SwipeBackground extends StatelessWidget {
   }
 }
 
-typedef _Edit = ({String text, String? image});
+typedef _Edit = ({String text, List<String> images});
 
 class _EditDialog extends StatefulWidget {
   const _EditDialog({
@@ -603,13 +765,13 @@ class _EditDialog extends StatefulWidget {
 class _EditDialogState extends State<_EditDialog> {
   late final _controller = TextEditingController(text: widget.thought.text);
   final _focus = FocusNode();
-  late PastedImage? _image = switch (widget.thought.image) {
-    null => null,
-    final name => (name: name, image: widget.store.imageNamed(name)),
-  };
+  late var _images = <PastedImage>[
+    for (final name in widget.thought.images)
+      (name: name, image: widget.store.imageNamed(name)),
+  ];
   String? _error;
 
-  bool _canSave(String text) => text.trim().isNotEmpty || _image != null;
+  bool _canSave(String text) => text.trim().isNotEmpty || _images.isNotEmpty;
 
   @override
   void dispose() {
@@ -622,7 +784,7 @@ class _EditDialogState extends State<_EditDialog> {
     if (!_canSave(_controller.text)) return;
     Navigator.pop<_Edit>(context, (
       text: _controller.text,
-      image: _image?.name,
+      images: [for (final pasted in _images) pasted.name],
     ));
   }
 
@@ -630,7 +792,7 @@ class _EditDialogState extends State<_EditDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final image = _image;
+    final images = _images;
     final error = _error;
     return AlertDialog(
       title: Row(
@@ -650,11 +812,16 @@ class _EditDialogState extends State<_EditDialog> {
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (image != null) ...[
-            _AttachmentPreview(
-              image: image.image,
-              maxHeight: 160,
-              onRemove: () => setState(() => _image = null),
+          if (images.isNotEmpty) ...[
+            _AttachmentsPreview(
+              images: images,
+              maxHeight: 120,
+              onRemove: (removed) => setState(
+                () => _images = [
+                  for (final pasted in _images)
+                    if (pasted != removed) pasted,
+                ],
+              ),
             ),
             const SizedBox(height: 16),
           ],
@@ -662,8 +829,9 @@ class _EditDialogState extends State<_EditDialog> {
             store: widget.store,
             focusNode: _focus,
             onImage: (pasted) => setState(() {
-              _image = pasted;
-              _error = null;
+              final known = _images.any((image) => image.name == pasted.name);
+              if (!known) _images = [..._images, pasted];
+              _error = known ? l10n.imageAlreadyAdded : null;
             }),
             onError: (message) => setState(() => _error = message),
             builder: (contextMenuBuilder) => TextField(

@@ -45,7 +45,7 @@ class WebThoughtStorage implements ThoughtStorage {
 
   @override
   Future<String> saveImage(Uint8List bytes) async {
-    final name = newImageName();
+    final name = await imageNameFor(bytes);
     final transaction = (await _db).transaction(_images.toJS, 'readwrite');
     transaction.objectStore(_images).put(bytes.toJS, name.toJS);
     await _completion(transaction);

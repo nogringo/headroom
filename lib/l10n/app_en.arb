@@ -97,5 +97,17 @@
   "imageLabel": "Image",
   "@imageLabel": {
     "description": "Accessibility label of a thought's image. Tapping it shows the image full screen."
+  },
+  "previousImage": "Previous image",
+  "@previousImage": {
+    "description": "Button of the full screen viewer that shows the thought's previous image."
+  },
+  "nextImage": "Next image",
+  "@nextImage": {
+    "description": "Button of the full screen viewer that shows the thought's next image."
+  },
+  "imageAlreadyAdded": "Image already added.",
+  "@imageAlreadyAdded": {
+    "description": "Shown when the pasted image is already among the images being added."
   }
 }

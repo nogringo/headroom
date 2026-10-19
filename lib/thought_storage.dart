@@ -1,5 +1,7 @@
 import 'dart:convert';
-import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 
 import 'thought.dart';
 
@@ -7,7 +9,7 @@ abstract interface class ThoughtStorage {
   Future<List<Thought>> read();
   Future<void> write(List<Thought> thoughts);
 
-  /// Returns the name to put in [Thought.image].
+  /// Returns the name to put in [Thought.images], the same for the same bytes.
   Future<String> saveImage(Uint8List bytes);
   Future<Uint8List> readImage(String name);
   Future<void> deleteImagesExcept(Set<String> keep);
@@ -20,8 +22,8 @@ List<Thought> decodeThoughts(String json) => [
     Thought.fromJson(item as Map<String, dynamic>),
 ];
 
-var _imageCount = 0;
+/// Names an image after its content, so pasting the same image twice gives
+/// the same name. Hashed off the UI thread where the platform allows it.
+Future<String> imageNameFor(Uint8List bytes) => compute(_hash, bytes);
 
-// The counter keeps names apart on the web, where the clock ticks in milliseconds.
-String newImageName() =>
-    '${DateTime.now().microsecondsSinceEpoch}-${_imageCount++}';
+String _hash(Uint8List bytes) => '${sha256.convert(bytes)}';

@@ -30,9 +30,12 @@ class FileThoughtStorage implements ThoughtStorage {
 
   @override
   Future<String> saveImage(Uint8List bytes) async {
-    final name = newImageName();
-    await _images.create(recursive: true);
-    await _writeAtomically(File('${_images.path}/$name'), bytes);
+    final name = await imageNameFor(bytes);
+    final file = File('${_images.path}/$name');
+    if (!await file.exists()) {
+      await _images.create(recursive: true);
+      await _writeAtomically(file, bytes);
+    }
     return name;
   }
 

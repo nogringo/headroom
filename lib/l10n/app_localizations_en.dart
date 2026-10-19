@@ -81,4 +81,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get imageLabel => 'Image';
+
+  @override
+  String get previousImage => 'Previous image';
+
+  @override
+  String get nextImage => 'Next image';
+
+  @override
+  String get imageAlreadyAdded => 'Image already added.';
 }

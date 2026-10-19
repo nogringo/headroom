@@ -29,44 +29,45 @@ void main() {
       expect(store.thoughts, isEmpty);
     });
 
-    test('accepts an image without text', () async {
-      final image = await store.saveImage(Uint8List.fromList([1]));
-      store.add(' ', image: image);
+    test('accepts images without text', () async {
+      final first = await store.saveImage(Uint8List.fromList([1]));
+      final second = await store.saveImage(Uint8List.fromList([2]));
+      store.add(' ', images: [first, second]);
       await store.flush();
 
       expect(storage.saved.single.text, isEmpty);
-      expect(storage.saved.single.image, image);
+      expect(storage.saved.single.images, [first, second]);
     });
 
     test('refuses an update that would leave neither text nor image', () {
-      final withImage = store.add('caption', image: 'photo')!;
+      final withImage = store.add('caption', images: ['photo'])!;
       final textOnly = store.add('note')!;
 
       store
-        ..update(withImage.id, text: '', image: 'photo')
-        ..update(textOnly.id, text: '', image: null);
+        ..update(withImage.id, text: '', images: ['photo'])
+        ..update(textOnly.id, text: '', images: []);
 
       expect(store.thoughts.map((t) => t.text), ['note', '']);
     });
 
-    test('update adds, replaces and removes the image', () {
+    test('update adds and removes images', () {
       final thought = store.add('note')!;
 
-      store.update(thought.id, text: 'note', image: 'first');
-      expect(store.thoughts.single.image, 'first');
+      store.update(thought.id, text: 'note', images: ['first', 'second']);
+      expect(store.thoughts.single.images, ['first', 'second']);
 
-      store.update(thought.id, text: 'note', image: 'second');
-      expect(store.thoughts.single.image, 'second');
+      store.update(thought.id, text: 'note', images: ['second']);
+      expect(store.thoughts.single.images, ['second']);
 
-      store.update(thought.id, text: 'note', image: null);
-      expect(store.thoughts.single.image, isNull);
+      store.update(thought.id, text: 'note', images: []);
+      expect(store.thoughts.single.images, isEmpty);
     });
 
     test('load drops images that no thought uses', () async {
       final used = await storage.saveImage(Uint8List.fromList([1]));
       await storage.saveImage(Uint8List.fromList([2]));
       storage.saved = [
-        Thought(id: '1', text: '', image: used, createdAt: DateTime(2026)),
+        Thought(id: '1', text: '', images: [used], createdAt: DateTime(2026)),
       ];
 
       await store.load();
@@ -91,7 +92,7 @@ void main() {
 
     test('updates text but keeps the original date', () async {
       final thought = store.add('draft')!;
-      store.update(thought.id, text: ' final ', image: null);
+      store.update(thought.id, text: ' final ', images: []);
       await store.flush();
 
       expect(storage.saved.single.text, 'final');

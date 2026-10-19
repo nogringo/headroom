@@ -217,6 +217,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Image'**
   String get imageLabel;
+
+  /// Button of the full screen viewer that shows the thought's previous image.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous image'**
+  String get previousImage;
+
+  /// Button of the full screen viewer that shows the thought's next image.
+  ///
+  /// In en, this message translates to:
+  /// **'Next image'**
+  String get nextImage;
+
+  /// Shown when the pasted image is already among the images being added.
+  ///
+  /// In en, this message translates to:
+  /// **'Image already added.'**
+  String get imageAlreadyAdded;
 }
 
 class _AppLocalizationsDelegate

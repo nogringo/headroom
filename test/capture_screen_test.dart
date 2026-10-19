@@ -13,6 +13,9 @@ import 'in_memory_storage.dart';
 final png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
 );
+final otherPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+);
 
 void main() {
   late InMemoryStorage storage;
@@ -223,23 +226,37 @@ void main() {
     expect(store.thoughts.single.text, 'Buy bread');
   });
 
-  testWidgets('editing adds an image to a thought', (tester) async {
-    await pumpApp(tester, [
-      Thought(id: '1', text: 'Poster', createdAt: DateTime.now()),
-    ]);
+  testWidgets('editing adds images after the ones a thought has', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      [
+        Thought(
+          id: '1',
+          text: 'Poster',
+          images: ['front'],
+          createdAt: DateTime.now(),
+        ),
+      ],
+      {'front': png},
+    );
     clipboardImage = png;
 
     await tester.tap(find.text('Poster'));
     await tester.pumpAndSettle();
     await pressPaste(tester);
-    expect(find.byTooltip('Remove image'), findsOneWidget);
+    expect(find.byTooltip('Remove image'), findsNWidgets(2));
 
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     await store.flush();
 
-    expect(storage.images[storage.saved.single.image], png);
-    expect(listedImage(), findsOneWidget);
+    final images = storage.saved.single.images;
+    expect(images, hasLength(2));
+    expect(images.first, 'front');
+    expect(storage.images[images.last], png);
+    expect(listedImage(), findsNWidgets(2));
   });
 
   testWidgets('editing removes the image, then text is required', (
@@ -247,7 +264,14 @@ void main() {
   ) async {
     await pumpApp(
       tester,
-      [Thought(id: '1', text: '', image: 'receipt', createdAt: DateTime.now())],
+      [
+        Thought(
+          id: '1',
+          text: '',
+          images: ['receipt'],
+          createdAt: DateTime.now(),
+        ),
+      ],
       {'receipt': png},
     );
     FilledButton saveButton() =>
@@ -267,7 +291,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(store.thoughts.single.text, 'Receipt');
-    expect(store.thoughts.single.image, isNull);
+    expect(store.thoughts.single.images, isEmpty);
     expect(listedImage(), findsNothing);
   });
 
@@ -310,7 +334,66 @@ void main() {
     expect(listedImage(), findsOneWidget);
     final saved = storage.saved.single;
     expect(saved.text, isEmpty);
-    expect(storage.images[saved.image], png);
+    expect(storage.images[saved.images.single], png);
+  });
+
+  testWidgets('pasting adds each new image once, each removable', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    clipboardImage = png;
+    await pressPaste(tester);
+    clipboardImage = otherPng;
+    await pressPaste(tester);
+    expect(find.byTooltip('Remove image'), findsNWidgets(2));
+
+    await pressPaste(tester);
+    expect(find.byTooltip('Remove image'), findsNWidgets(2));
+    expect(find.text('Image already added.'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Remove image').first);
+    await tester.pump();
+    expect(find.byTooltip('Remove image'), findsOneWidget);
+
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    await store.flush();
+
+    expect(storage.images[storage.saved.single.images.single], otherPng);
+    expect(listedImage(), findsOneWidget);
+  });
+
+  testWidgets('editing refuses an image the thought already has', (
+    tester,
+  ) async {
+    final name = await InMemoryStorage().saveImage(png);
+    await pumpApp(
+      tester,
+      [
+        Thought(
+          id: '1',
+          text: 'Poster',
+          images: [name],
+          createdAt: DateTime.now(),
+        ),
+      ],
+      {name: png},
+    );
+    clipboardImage = png;
+
+    await tester.tap(find.text('Poster'));
+    await tester.pumpAndSettle();
+    await pressPaste(tester);
+
+    expect(find.byTooltip('Remove image'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Image already added.'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('pasting prefers text when the clipboard also has some', (
@@ -353,7 +436,7 @@ void main() {
         Thought(
           id: '1',
           text: 'Receipt',
-          image: 'receipt',
+          images: ['receipt'],
           createdAt: DateTime.now(),
         ),
       ],
@@ -365,9 +448,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsOneWidget);
 
+    expect(find.byTooltip('Next image'), findsNothing);
+
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsNothing);
+  });
+
+  testWidgets('the viewer turns between the images of a thought', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      [
+        Thought(
+          id: '1',
+          text: 'Before and after',
+          images: ['before', 'after'],
+          createdAt: DateTime.now(),
+        ),
+      ],
+      {'before': png, 'after': png},
+    );
+    await decodeImages(tester);
+    int page() => tester
+        .widget<PageView>(find.byType(PageView))
+        .controller!
+        .page!
+        .round();
+
+    await tester.tap(listedImage().last);
+    await tester.pumpAndSettle();
+    expect(page(), 1);
+    expect(find.byTooltip('Next image'), findsNothing);
+
+    await tester.tap(find.byTooltip('Previous image'));
+    await tester.pumpAndSettle();
+    expect(page(), 0);
+    expect(find.byTooltip('Previous image'), findsNothing);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(page(), 1);
+
+    await tester.drag(find.byType(PageView), const Offset(600, 0));
+    await tester.pumpAndSettle();
+    expect(page(), 0);
   });
 
   testWidgets('follows a French device locale', (tester) async {

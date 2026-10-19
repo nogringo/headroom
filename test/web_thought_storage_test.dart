@@ -29,20 +29,21 @@ void main() {
     final thought = Thought(
       id: '1',
       text: 'Rappeler le garagiste',
-      image: 'photo',
+      images: ['photo', 'sketch'],
       createdAt: DateTime(2026, 10, 19, 9, 30),
     );
     await storage.write([thought]);
     final loaded = await WebThoughtStorage(key: storage.key).read();
 
     expect(loaded.single.text, thought.text);
-    expect(loaded.single.image, 'photo');
+    expect(loaded.single.images, ['photo', 'sketch']);
     expect(loaded.single.createdAt, thought.createdAt);
   });
 
   test('stores images in IndexedDB and deletes the ones not kept', () async {
     final kept = await storage.saveImage(Uint8List.fromList([1, 2, 3]));
     final dropped = await storage.saveImage(Uint8List.fromList([4, 5]));
+    expect(await storage.saveImage(Uint8List.fromList([1, 2, 3])), kept);
 
     await storage.deleteImagesExcept({kept});
 
