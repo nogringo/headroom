@@ -17,6 +17,15 @@ import 'thought_store.dart';
 
 const _contentWidth = 640.0;
 
+/// Touch keyboards have a single key, kept for sending. On the web, the
+/// platform is the browser's OS.
+bool _shiftEnterBreaksLine(TargetPlatform platform) => switch (platform) {
+  TargetPlatform.macOS ||
+  TargetPlatform.windows ||
+  TargetPlatform.linux => true,
+  _ => false,
+};
+
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({super.key, required this.store});
 
@@ -158,6 +167,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final l10n = AppLocalizations.of(context);
     final inputStyle = theme.textTheme.displaySmall;
     final attachments = _attachments;
+    final shiftEnter = _shiftEnterBreaksLine(theme.platform);
 
     return Scaffold(
       body: SafeArea(
@@ -194,30 +204,38 @@ class _CaptureScreenState extends State<CaptureScreen> {
                                 }
                               },
                               onError: _showError,
-                              builder: (contextMenuBuilder) => TextField(
+                              builder: (contextMenuBuilder) => _SubmitOnEnter(
                                 controller: _input,
-                                focusNode: _inputFocus,
-                                autofocus: true,
-                                minLines: 1,
-                                maxLines: 5,
-                                keyboardType: TextInputType.text,
-                                textInputAction: TextInputAction.send,
-                                textCapitalization:
-                                    TextCapitalization.sentences,
-                                onEditingComplete: _capture,
-                                contextMenuBuilder: contextMenuBuilder,
-                                style: inputStyle,
-                                decoration: InputDecoration(
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  hintText: l10n.captureHint,
-                                  // The French hint wraps; short text should not keep its two lines.
-                                  maintainHintSize: false,
-                                  hintStyle: inputStyle?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
+                                onSubmit: _capture,
+                                child: TextField(
+                                  controller: _input,
+                                  focusNode: _inputFocus,
+                                  autofocus: true,
+                                  minLines: 1,
+                                  maxLines: 5,
+                                  keyboardType: shiftEnter
+                                      ? TextInputType.multiline
+                                      : TextInputType.text,
+                                  textInputAction: shiftEnter
+                                      ? TextInputAction.newline
+                                      : TextInputAction.send,
+                                  textCapitalization:
+                                      TextCapitalization.sentences,
+                                  onEditingComplete: _capture,
+                                  contextMenuBuilder: contextMenuBuilder,
+                                  style: inputStyle,
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    hintText: l10n.captureHint,
+                                    // The French hint wraps; short text should not keep its two lines.
+                                    maintainHintSize: false,
+                                    hintStyle: inputStyle?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -891,6 +909,44 @@ class _SwipeBackground extends StatelessWidget {
   }
 }
 
+/// Submits on Enter. Shift+Enter goes on to the platform, which starts a new
+/// line in a multiline field.
+class _SubmitOnEnter extends StatelessWidget {
+  const _SubmitOnEnter({
+    required this.controller,
+    required this.onSubmit,
+    required this.child,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onSubmit;
+  final Widget child;
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    final key = event.logicalKey;
+    if (event is KeyUpEvent ||
+        (key != LogicalKeyboardKey.enter &&
+            key != LogicalKeyboardKey.numpadEnter) ||
+        HardwareKeyboard.instance.isShiftPressed ||
+        // An input method confirms its composition with Enter.
+        controller.value.composing.isValid) {
+      return KeyEventResult.ignored;
+    }
+    // Repeats are swallowed, or a held Enter would fill the emptied field
+    // with line breaks.
+    if (event is KeyDownEvent) onSubmit();
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onKeyEvent: _handleKey,
+    child: child,
+  );
+}
+
 typedef _Edit = ({String text, List<String> images});
 
 class _EditDialog extends StatefulWidget {
@@ -940,6 +996,7 @@ class _EditDialogState extends State<_EditDialog> {
     final l10n = AppLocalizations.of(context);
     final images = _images;
     final error = _error;
+    final shiftEnter = _shiftEnterBreaksLine(theme.platform);
     return AlertDialog(
       title: Row(
         children: [
@@ -980,17 +1037,25 @@ class _EditDialogState extends State<_EditDialog> {
               _error = known ? l10n.imageAlreadyAdded : null;
             }),
             onError: (message) => setState(() => _error = message),
-            builder: (contextMenuBuilder) => TextField(
+            builder: (contextMenuBuilder) => _SubmitOnEnter(
               controller: _controller,
-              focusNode: _focus,
-              autofocus: true,
-              minLines: 1,
-              maxLines: 8,
-              keyboardType: TextInputType.text,
-              textInputAction: TextInputAction.done,
-              textCapitalization: TextCapitalization.sentences,
-              onEditingComplete: _save,
-              contextMenuBuilder: contextMenuBuilder,
+              onSubmit: _save,
+              child: TextField(
+                controller: _controller,
+                focusNode: _focus,
+                autofocus: true,
+                minLines: 1,
+                maxLines: 8,
+                keyboardType: shiftEnter
+                    ? TextInputType.multiline
+                    : TextInputType.text,
+                textInputAction: shiftEnter
+                    ? TextInputAction.newline
+                    : TextInputAction.done,
+                textCapitalization: TextCapitalization.sentences,
+                onEditingComplete: _save,
+                contextMenuBuilder: contextMenuBuilder,
+              ),
             ),
           ),
           // Inline rather than a snackbar, which would sit under the dialog's barrier.

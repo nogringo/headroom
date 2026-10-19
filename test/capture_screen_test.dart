@@ -149,6 +149,52 @@ void main() {
     expect(sendButton(tester).onPressed, isNull);
   });
 
+  testWidgets('on a computer, Enter sends and Shift+Enter starts a new line', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    // The platform inserts the line break, as the field takes several lines.
+    expect(captureField(tester).keyboardType, TextInputType.multiline);
+    await tester.enterText(find.byType(TextField), 'Call the garage');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    expect(await tester.sendKeyEvent(LogicalKeyboardKey.enter), isFalse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    expect(store.thoughts, isEmpty);
+
+    await tester.enterText(find.byType(TextField), 'Call the garage\nTyres');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    expect(store.thoughts.single.text, 'Call the garage\nTyres');
+    expect(captureField(tester).controller!.text, isEmpty);
+  }, variant: TargetPlatformVariant.desktop());
+
+  testWidgets('Enter is left to an input method that is composing', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await tester.showKeyboard(find.byType(TextField));
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: 'にほん',
+        selection: TextSelection.collapsed(offset: 3),
+        composing: TextRange(start: 0, end: 3),
+      ),
+    );
+    await tester.pump();
+
+    expect(await tester.sendKeyEvent(LogicalKeyboardKey.enter), isFalse);
+    expect(store.thoughts, isEmpty);
+  }, variant: TargetPlatformVariant.desktop());
+
+  testWidgets('touch keyboards keep their send key', (tester) async {
+    await pumpApp(tester);
+
+    expect(captureField(tester).textInputAction, TextInputAction.send);
+  }, variant: TargetPlatformVariant.mobile());
+
   testWidgets('swiping deletes a thought and undo brings it back', (
     tester,
   ) async {
@@ -237,6 +283,21 @@ void main() {
     expect(find.text('Buy bread'), findsOneWidget);
     expect(store.thoughts.single.text, 'Buy bread');
   });
+
+  testWidgets('on a computer, Enter saves an edit', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    await tester.tap(find.text('Buy bread'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Buy bread\nAnd milk');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(store.thoughts.single.text, 'Buy bread\nAnd milk');
+  }, variant: TargetPlatformVariant.desktop());
 
   testWidgets('editing adds images after the ones a thought has', (
     tester,
