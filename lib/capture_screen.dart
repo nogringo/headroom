@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -9,6 +10,8 @@ import 'l10n/app_localizations.dart';
 import 'relative_time.dart';
 import 'thought.dart';
 import 'thought_store.dart';
+
+const _contentWidth = 640.0;
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({super.key, required this.store});
@@ -136,13 +139,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _contentWidth),
+                child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 28, 16, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,16 +216,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     ],
                   ),
                 ),
-                Divider(height: 1, color: theme.colorScheme.outlineVariant),
-                Expanded(
-                  child: ListenableBuilder(
-                    listenable: _store,
-                    builder: (context, _) => _buildList(context),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+            Divider(height: 1, color: theme.colorScheme.outlineVariant),
+            Expanded(
+              child: ListenableBuilder(
+                listenable: _store,
+                builder: (context, _) => _buildList(context),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -232,51 +236,61 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final l10n = AppLocalizations.of(context);
     final now = DateTime.now();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_store.saveFailed)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-            child: Text(
-              l10n.saveFailed,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-            ),
-          ),
-        Expanded(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (_store.thoughts.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
-                  child: Text(
-                    l10n.emptyList,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+    // The list spans the window so its scrollbar sits at the edge and the
+    // margins scroll too. Its content keeps to the field's centered column.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final side = math.max(0.0, (constraints.maxWidth - _contentWidth) / 2);
+        final inset = EdgeInsets.symmetric(horizontal: side + 24);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_store.saveFailed)
+              Padding(
+                padding: inset.copyWith(top: 12),
+                child: Text(
+                  l10n.saveFailed,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
                   ),
                 ),
-              AnimatedList(
-                key: _listKey,
-                controller: _scroll,
-                padding: EdgeInsets.only(
-                  top: 8,
-                  bottom: 8 + MediaQuery.paddingOf(context).bottom,
-                ),
-                initialItemCount: _store.thoughts.length,
-                itemBuilder: (context, index, animation) => _buildItem(
-                  _store.thoughts[index],
-                  animation,
-                  relativeTime(_store.thoughts[index].createdAt, now, l10n),
-                ),
               ),
-            ],
-          ),
-        ),
-      ],
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (_store.thoughts.isEmpty)
+                    Padding(
+                      padding: inset.copyWith(top: 22),
+                      child: Text(
+                        l10n.emptyList,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  AnimatedList(
+                    key: _listKey,
+                    controller: _scroll,
+                    padding: EdgeInsets.fromLTRB(
+                      side,
+                      8,
+                      side,
+                      8 + MediaQuery.paddingOf(context).bottom,
+                    ),
+                    initialItemCount: _store.thoughts.length,
+                    itemBuilder: (context, index, animation) => _buildItem(
+                      _store.thoughts[index],
+                      animation,
+                      relativeTime(_store.thoughts[index].createdAt, now, l10n),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
