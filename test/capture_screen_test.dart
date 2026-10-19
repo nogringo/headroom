@@ -213,6 +213,35 @@ void main() {
     expect(store.thoughts.single.id, '1');
   });
 
+  testWidgets('undo goes away on its own', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    await tester.drag(find.text('Buy bread'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Undo'), findsNothing);
+  });
+
+  testWidgets('undo waits for a screen reader', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(accessibleNavigation: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    await tester.drag(find.text('Buy bread'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Undo'), findsOneWidget);
+  });
+
   testWidgets('the edit dialog deletes the thought, with undo', (tester) async {
     await pumpApp(tester, [
       Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),

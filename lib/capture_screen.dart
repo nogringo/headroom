@@ -123,6 +123,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(l10n.thoughtDeleted),
+          // A screen reader takes longer than the timeout to reach Undo.
+          persist: MediaQuery.accessibleNavigationOf(context),
           action: SnackBarAction(
             label: l10n.undo,
             onPressed: () {
