@@ -41,31 +41,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get save => 'Enregistrer';
 
   @override
-  String get justNow => 'à l\'instant';
+  String get today => 'Aujourd\'hui';
 
   @override
-  String minutesAgo(int count) {
-    return 'il y a $count min';
-  }
-
-  @override
-  String hoursAgo(int count) {
-    return 'il y a $count h';
-  }
-
-  @override
-  String get yesterday => 'hier';
-
-  @override
-  String daysAgo(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'il y a $count jours',
-      one: 'il y a 1 jour',
-    );
-    return '$_temp0';
-  }
+  String get yesterday => 'Hier';
 
   @override
   String get pasteImage => 'Coller l\'image';

@@ -30,7 +30,7 @@
   },
   "editTitle": "Edit thought",
   "@editTitle": {
-    "description": "Title of the dialog opened by tapping a thought."
+    "description": "Accessibility label of the dialog opened by tapping a thought."
   },
   "cancel": "Cancel",
   "@cancel": {
@@ -40,43 +40,13 @@
   "@save": {
     "description": "Saves the edited thought and closes the dialog."
   },
-  "justNow": "just now",
-  "@justNow": {
-    "description": "Age of a thought noted less than a minute ago."
+  "today": "Today",
+  "@today": {
+    "description": "Heading above the thoughts noted today."
   },
-  "minutesAgo": "{count} min ago",
-  "@minutesAgo": {
-    "description": "Age of a thought noted less than an hour ago.",
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "12"
-      }
-    }
-  },
-  "hoursAgo": "{count} h ago",
-  "@hoursAgo": {
-    "description": "Age of a thought noted earlier today.",
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "3"
-      }
-    }
-  },
-  "yesterday": "yesterday",
+  "yesterday": "Yesterday",
   "@yesterday": {
-    "description": "Age of a thought noted on the previous calendar day."
-  },
-  "daysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
-  "@daysAgo": {
-    "description": "Age of a thought noted 2 to 6 calendar days ago. Older thoughts show a date instead.",
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "4"
-      }
-    }
+    "description": "Heading above the thoughts noted on the previous calendar day. Older days show a weekday, then a date."
   },
   "pasteImage": "Paste image",
   "@pasteImage": {

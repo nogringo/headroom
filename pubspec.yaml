@@ -25,3 +25,9 @@ dev_dependencies:
 flutter:
   generate: true
   uses-material-design: true
+  fonts:
+    # Recursive 1.085 with MONO, slnt and CRSV pinned to 0 and wght cut to
+    # 300-700 (fontTools instancer), which divides its size by four.
+    - family: Recursive
+      fonts:
+        - asset: assets/fonts/Recursive.ttf

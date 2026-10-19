@@ -8,14 +8,38 @@ import 'package:flutter/services.dart';
 
 import 'clipboard_image_io.dart'
     if (dart.library.js_interop) 'clipboard_image_web.dart';
+import 'day_label.dart';
 import 'image_paste.dart';
 import 'l10n/app_localizations.dart';
-import 'relative_time.dart';
 import 'report_error.dart';
+import 'theme.dart';
 import 'thought.dart';
 import 'thought_store.dart';
 
 const _contentWidth = 640.0;
+
+/// From the window's edge to the note and to the thoughts.
+const _gutter = 12.0;
+
+/// From the note's edge to its text, which the thoughts line up with.
+const _inset = 20.0;
+
+/// A heading for [day] when [thought] is null, else a thought noted that day.
+typedef _Row = ({DateTime day, Thought? thought});
+
+List<_Row> _rowsOf(List<Thought> thoughts) {
+  final rows = <_Row>[];
+  DateTime? previous;
+  for (final thought in thoughts) {
+    final day = DateUtils.dateOnly(thought.createdAt);
+    if (day != previous) rows.add((day: day, thought: null));
+    rows.add((day: day, thought: thought));
+    previous = day;
+  }
+  return rows;
+}
+
+Object _keyOf(_Row row) => row.thought?.id ?? row.day;
 
 /// Touch keyboards have a single key, kept for sending. On the web, the
 /// platform is the browser's OS.
@@ -46,6 +70,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// The images pasted into the field, waiting to be sent.
   var _attachments = <PastedImage>[];
 
+  /// What the list shows, kept in step with the store by [_syncRows].
+  late var _rows = _rowsOf(_store.thoughts);
+
+  /// Set while the thought swiped away is being removed.
+  String? _swipedId;
+
   ThoughtStore get _store => widget.store;
 
   Duration get _motion => MediaQuery.disableAnimationsOf(context)
@@ -57,11 +87,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
     super.initState();
     // Reopening the app from the background should land in the field, like a cold start.
     _lifecycle = AppLifecycleListener(onResume: _refocus);
+    // Turns "Today" into "Yesterday" at midnight.
     _clock = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
+    _store.addListener(_syncRows);
   }
 
   @override
   void dispose() {
+    _store.removeListener(_syncRows);
     _clock.cancel();
     _lifecycle.dispose();
     _scroll.dispose();
@@ -80,7 +113,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
     _input.clear();
     setState(() => _attachments = []);
     _inputFocus.requestFocus();
-    _listKey.currentState?.insertItem(0, duration: _motion);
     if (_scroll.hasClients && _scroll.offset > 0) {
       if (_motion == Duration.zero) {
         _scroll.jumpTo(0);
@@ -105,19 +137,48 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
+  /// Animates the list from the rows it shows to the store's: thoughts and
+  /// headings that appear grow in, those that go away collapse.
+  void _syncRows() {
+    final from = _rows;
+    final to = _rows = _rowsOf(_store.thoughts);
+    final list = _listKey.currentState;
+    if (list == null) return;
+    final kept = {for (final row in to) _keyOf(row)};
+    var i = 0;
+    var j = 0;
+    var at = 0;
+    while (i < from.length || j < to.length) {
+      final before = i < from.length ? _keyOf(from[i]) : null;
+      final after = j < to.length ? _keyOf(to[j]) : null;
+      if (before != null && before == after) {
+        i++;
+        j++;
+        at++;
+      } else if (before != null && (after == null || !kept.contains(before))) {
+        final removed = from[i++];
+        // A swiped tile has already slid away. Any other row collapses.
+        final swiped = removed.thought?.id == _swipedId;
+        list.removeItem(
+          at,
+          (_, animation) => swiped
+              ? const SizedBox.shrink()
+              : IgnorePointer(child: _buildRow(removed, animation)),
+          duration: swiped ? Duration.zero : _motion,
+        );
+      } else {
+        list.insertItem(at++, duration: _motion);
+        j++;
+      }
+    }
+  }
+
   void _remove(Thought thought, {bool swiped = false}) {
+    _swipedId = swiped ? thought.id : null;
     final index = _store.remove(thought.id);
+    _swipedId = null;
     if (index == -1) return;
     final l10n = AppLocalizations.of(context);
-    final age = relativeTime(thought.createdAt, DateTime.now(), l10n);
-    // A swiped tile has already slid away. Any other one collapses.
-    _listKey.currentState?.removeItem(
-      index,
-      (_, animation) => swiped
-          ? const SizedBox.shrink()
-          : IgnorePointer(child: _buildItem(thought, animation, age)),
-      duration: swiped ? Duration.zero : _motion,
-    );
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -128,9 +189,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
           action: SnackBarAction(
             label: l10n.undo,
             onPressed: () {
-              if (!mounted) return;
-              final at = _store.restore(thought, index);
-              _listKey.currentState?.insertItem(at, duration: _motion);
+              if (mounted) _store.restore(thought, index);
             },
           ),
         ),
@@ -166,8 +225,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
-    final inputStyle = theme.textTheme.displaySmall;
+    final inputStyle = theme.textTheme.displaySmall?.copyWith(
+      color: scheme.onPrimaryContainer,
+    );
     final attachments = _attachments;
     final shiftEnter = _shiftEnterBreaksLine(theme.platform);
 
@@ -182,101 +244,119 @@ class _CaptureScreenState extends State<CaptureScreen> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: _contentWidth),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 28, 16, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: ImagePaste(
-                              store: _store,
-                              focusNode: _inputFocus,
-                              onImage: (image) {
-                                if (_attachments.any(
-                                  (pasted) => pasted.name == image.name,
-                                )) {
-                                  _showError(l10n.imageAlreadyAdded);
-                                } else {
-                                  setState(
-                                    () =>
-                                        _attachments = [..._attachments, image],
-                                  );
-                                }
-                              },
-                              onError: _showError,
-                              builder: (contextMenuBuilder) => _SubmitOnEnter(
-                                controller: _input,
-                                onSubmit: _capture,
-                                child: TextField(
+                  padding: const EdgeInsets.fromLTRB(
+                    _gutter,
+                    _gutter,
+                    _gutter,
+                    8,
+                  ),
+                  child: _Note(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: ImagePaste(
+                                store: _store,
+                                focusNode: _inputFocus,
+                                onImage: (image) {
+                                  if (_attachments.any(
+                                    (pasted) => pasted.name == image.name,
+                                  )) {
+                                    _showError(l10n.imageAlreadyAdded);
+                                  } else {
+                                    setState(
+                                      () => _attachments = [
+                                        ..._attachments,
+                                        image,
+                                      ],
+                                    );
+                                  }
+                                },
+                                onError: _showError,
+                                builder: (contextMenuBuilder) => _SubmitOnEnter(
                                   controller: _input,
-                                  focusNode: _inputFocus,
-                                  autofocus: true,
-                                  minLines: 1,
-                                  maxLines: 5,
-                                  keyboardType: shiftEnter
-                                      ? TextInputType.multiline
-                                      : TextInputType.text,
-                                  textInputAction: shiftEnter
-                                      ? TextInputAction.newline
-                                      : TextInputAction.send,
-                                  textCapitalization:
-                                      TextCapitalization.sentences,
-                                  onEditingComplete: _capture,
-                                  contextMenuBuilder: contextMenuBuilder,
-                                  style: inputStyle,
-                                  decoration: InputDecoration(
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      vertical: 8,
-                                    ),
-                                    hintText: l10n.captureHint,
-                                    // The French hint wraps; short text should not keep its two lines.
-                                    maintainHintSize: false,
-                                    hintStyle: inputStyle?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
+                                  onSubmit: _capture,
+                                  child: TextField(
+                                    controller: _input,
+                                    focusNode: _inputFocus,
+                                    autofocus: true,
+                                    minLines: 1,
+                                    maxLines: 5,
+                                    keyboardType: shiftEnter
+                                        ? TextInputType.multiline
+                                        : TextInputType.text,
+                                    textInputAction: shiftEnter
+                                        ? TextInputAction.newline
+                                        : TextInputAction.send,
+                                    textCapitalization:
+                                        TextCapitalization.sentences,
+                                    onEditingComplete: _capture,
+                                    contextMenuBuilder: contextMenuBuilder,
+                                    style: inputStyle,
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            vertical: 8,
+                                          ),
+                                      hintText: l10n.captureHint,
+                                      // The French hint wraps; short text should not keep its two lines.
+                                      maintainHintSize: false,
+                                      hintStyle: inputStyle?.copyWith(
+                                        color: scheme.onPrimaryContainer
+                                            .withValues(alpha: 0.6),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          ValueListenableBuilder(
-                            valueListenable: _input,
-                            builder: (context, value, _) => IconButton.filled(
-                              tooltip: l10n.captureButton,
-                              onPressed:
-                                  value.text.trim().isEmpty &&
-                                      attachments.isEmpty
-                                  ? null
-                                  : _capture,
-                              icon: const Icon(Icons.arrow_upward_rounded),
+                            const SizedBox(width: 12),
+                            ValueListenableBuilder(
+                              valueListenable: _input,
+                              builder: (context, value, _) => IconButton.filled(
+                                style: IconButton.styleFrom(
+                                  disabledBackgroundColor: scheme
+                                      .onPrimaryContainer
+                                      .withValues(alpha: 0.08),
+                                  disabledForegroundColor: scheme
+                                      .onPrimaryContainer
+                                      .withValues(alpha: 0.4),
+                                ),
+                                tooltip: l10n.captureButton,
+                                onPressed:
+                                    value.text.trim().isEmpty &&
+                                        attachments.isEmpty
+                                    ? null
+                                    : _capture,
+                                icon: const Icon(Icons.arrow_upward_rounded),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      if (attachments.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: _AttachmentsPreview(
-                            images: attachments,
-                            onRemove: (removed) => setState(
-                              () => _attachments = [
-                                for (final pasted in _attachments)
-                                  if (pasted != removed) pasted,
-                              ],
-                            ),
-                          ),
+                          ],
                         ),
-                    ],
+                        if (attachments.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: _AttachmentsPreview(
+                              images: attachments,
+                              onRemove: (removed) => setState(
+                                () => _attachments = [
+                                  for (final pasted in _attachments)
+                                    if (pasted != removed) pasted,
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-            Divider(height: 1, color: theme.colorScheme.outlineVariant),
             Expanded(
               child: ListenableBuilder(
                 listenable: _store,
@@ -292,14 +372,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Widget _buildList(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final now = DateTime.now();
 
     // The list spans the window so its scrollbar sits at the edge and the
-    // margins scroll too. Its content keeps to the field's centered column.
+    // margins scroll too. Its content keeps to the note's centered column.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final side = math.max(0.0, (constraints.maxWidth - _contentWidth) / 2);
-        final inset = EdgeInsets.symmetric(horizontal: side + 24);
+        final side =
+            math.max(0.0, (constraints.maxWidth - _contentWidth) / 2) + _gutter;
+        final inset = EdgeInsets.symmetric(horizontal: side + _inset);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -319,10 +399,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 children: [
                   if (_store.thoughts.isEmpty)
                     Padding(
-                      padding: inset.copyWith(top: 22),
+                      padding: inset.copyWith(top: 24),
                       child: Text(
                         l10n.emptyList,
-                        style: theme.textTheme.bodyLarge?.copyWith(
+                        style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
@@ -332,16 +412,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     controller: _scroll,
                     padding: EdgeInsets.fromLTRB(
                       side,
-                      8,
+                      0,
                       side,
-                      8 + MediaQuery.paddingOf(context).bottom,
+                      24 + MediaQuery.paddingOf(context).bottom,
                     ),
-                    initialItemCount: _store.thoughts.length,
-                    itemBuilder: (context, index, animation) => _buildItem(
-                      _store.thoughts[index],
-                      animation,
-                      relativeTime(_store.thoughts[index].createdAt, now, l10n),
-                    ),
+                    initialItemCount: _rows.length,
+                    itemBuilder: (context, index, animation) =>
+                        _buildRow(_rows[index], animation),
                   ),
                 ],
               ),
@@ -352,37 +429,45 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  Widget _buildItem(Thought thought, Animation<double> animation, String age) {
+  Widget _buildRow(_Row row, Animation<double> animation) {
     final eased = animation.drive(CurveTween(curve: Curves.easeOutCubic));
-    final l10n = AppLocalizations.of(context);
-    final images = _imagesOf(thought);
-
+    final thought = row.thought;
     return SizeTransition(
       sizeFactor: eased,
       child: FadeTransition(
         opacity: eased,
-        child: Semantics(
-          customSemanticsActions: {
-            CustomSemanticsAction(label: l10n.delete): () => _remove(thought),
-          },
-          child: Dismissible(
-            key: ValueKey(thought.id),
-            background: const _SwipeBackground(
-              alignment: AlignmentDirectional.centerStart,
-            ),
-            secondaryBackground: const _SwipeBackground(
-              alignment: AlignmentDirectional.centerEnd,
-            ),
-            onDismissed: (_) => _remove(thought, swiped: true),
-            child: _ThoughtTile(
-              text: thought.text,
-              images: images,
-              age: age,
-              onTap: () => _edit(thought),
-              onImageTap: (index) => _view(thought.images, index),
-              onImageCopy: (index) => _copyImage(thought.images[index]),
-              onDelete: () => _remove(thought),
-            ),
+        child: thought == null
+            ? _DayHeading(day: row.day)
+            : _buildThought(thought),
+      ),
+    );
+  }
+
+  Widget _buildThought(Thought thought) {
+    final l10n = AppLocalizations.of(context);
+    return Semantics(
+      customSemanticsActions: {
+        CustomSemanticsAction(label: l10n.delete): () => _remove(thought),
+      },
+      child: ClipRRect(
+        borderRadius: paperRadius,
+        child: Dismissible(
+          key: ValueKey(thought.id),
+          background: const _SwipeBackground(
+            alignment: AlignmentDirectional.centerStart,
+          ),
+          secondaryBackground: const _SwipeBackground(
+            alignment: AlignmentDirectional.centerEnd,
+          ),
+          onDismissed: (_) => _remove(thought, swiped: true),
+          child: _ThoughtTile(
+            text: thought.text,
+            images: _imagesOf(thought),
+            createdAt: thought.createdAt,
+            onTap: () => _edit(thought),
+            onImageTap: (index) => _view(thought.images, index),
+            onImageCopy: (index) => _copyImage(thought.images[index]),
+            onDelete: () => _remove(thought),
           ),
         ),
       ),
@@ -390,11 +475,46 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 }
 
+/// The sticky note that thoughts are written on.
+class _Note extends StatelessWidget {
+  const _Note({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.primaryContainer,
+    borderRadius: paperRadius,
+    child: Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(_inset, 14, 12, 12),
+      child: child,
+    ),
+  );
+}
+
+class _DayHeading extends StatelessWidget {
+  const _DayHeading({required this.day});
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsetsDirectional.fromSTEB(_inset, 24, _inset, 0),
+    child: Semantics(
+      header: true,
+      child: Text(
+        dayLabel(day, DateTime.now(), AppLocalizations.of(context)),
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
+    ),
+  );
+}
+
 class _ThoughtTile extends StatefulWidget {
   const _ThoughtTile({
     required this.text,
     required this.images,
-    required this.age,
+    required this.createdAt,
     required this.onTap,
     required this.onImageTap,
     required this.onImageCopy,
@@ -403,7 +523,7 @@ class _ThoughtTile extends StatefulWidget {
 
   final String text;
   final List<ImageProvider> images;
-  final String age;
+  final DateTime createdAt;
   final VoidCallback onTap;
   final ValueChanged<int> onImageTap;
   final ValueChanged<int> onImageCopy;
@@ -422,8 +542,15 @@ class _ThoughtTileState extends State<_ThoughtTile> {
     final theme = Theme.of(context);
     final text = widget.text;
     final images = widget.images;
-    // Touch screens have the swipe. Where a pointer hovers, a button shows up
-    // on hover, or on keyboard focus.
+    final time = Text(
+      MaterialLocalizations.of(context).formatTimeOfDay(
+        TimeOfDay.fromDateTime(widget.createdAt),
+        alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+      ),
+      style: theme.textTheme.bodySmall,
+    );
+    // Touch screens have the swipe. Where a pointer hovers, a button takes
+    // the time's place on hover, or on keyboard focus.
     final deleteButton =
         kIsWeb ||
         switch (theme.platform) {
@@ -432,24 +559,31 @@ class _ThoughtTileState extends State<_ThoughtTile> {
           TargetPlatform.linux => true,
           _ => false,
         };
+    final revealed = _hovered || _focused;
+    const fade = Duration(milliseconds: 120);
     // Opaque so the swipe background only shows where the tile has slid away.
     return Material(
       color: theme.colorScheme.surface,
+      borderRadius: paperRadius,
       child: Focus(
         canRequestFocus: false,
         skipTraversal: true,
         onFocusChange: (focused) => setState(() => _focused = focused),
         child: InkWell(
+          borderRadius: paperRadius,
           onTap: widget.onTap,
           onHover: (hovered) => setState(() => _hovered = hovered),
           child: Padding(
             padding: EdgeInsetsDirectional.fromSTEB(
-              24,
-              14,
-              deleteButton ? 12 : 24,
-              14,
+              _inset,
+              10,
+              deleteButton ? 6 : _inset,
+              10,
             ),
             child: Row(
+              // The time sits on the first line of text, or at the top of an image.
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
               children: [
                 Expanded(
                   child: Column(
@@ -474,24 +608,44 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                             ],
                           ),
                         ),
-                      SizedBox(height: images.isEmpty ? 4 : 8),
-                      Text(widget.age, style: theme.textTheme.bodySmall),
                     ],
                   ),
                 ),
-                if (deleteButton) ...[
-                  const SizedBox(width: 8),
-                  AnimatedOpacity(
-                    opacity: _hovered || _focused ? 1 : 0,
-                    duration: const Duration(milliseconds: 120),
-                    alwaysIncludeSemantics: true,
-                    child: IconButton(
-                      tooltip: AppLocalizations.of(context).delete,
-                      onPressed: widget.onDelete,
-                      icon: const Icon(Icons.delete_outline_rounded),
-                    ),
-                  ),
-                ],
+                const SizedBox(width: 16),
+                if (deleteButton)
+                  Stack(
+                    alignment: AlignmentDirectional.centerEnd,
+                    children: [
+                      AnimatedOpacity(
+                        opacity: revealed ? 0 : 1,
+                        duration: fade,
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.only(
+                            end: _inset - 6,
+                          ),
+                          child: time,
+                        ),
+                      ),
+                      AnimatedOpacity(
+                        opacity: revealed ? 1 : 0,
+                        duration: fade,
+                        alwaysIncludeSemantics: true,
+                        child: IconButton(
+                          constraints: const BoxConstraints.tightFor(
+                            width: 32,
+                            height: 28,
+                          ),
+                          padding: EdgeInsets.zero,
+                          iconSize: 18,
+                          tooltip: AppLocalizations.of(context).delete,
+                          onPressed: widget.onDelete,
+                          icon: const Icon(Icons.delete_outline_rounded),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  time,
               ],
             ),
           ),
@@ -528,7 +682,7 @@ class _ImageThumbnail extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: paperRadius,
           child: _CopyImageMenu(
             onCopy: onCopy,
             child: InkWell(
@@ -614,6 +768,7 @@ class _AttachmentsPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final removeImage = AppLocalizations.of(context).removeImage;
+    final onNote = Theme.of(context).colorScheme.onPrimaryContainer;
     return Wrap(
       spacing: 12,
       runSpacing: 12,
@@ -632,6 +787,10 @@ class _AttachmentsPreview extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               IconButton.filledTonal(
+                style: IconButton.styleFrom(
+                  backgroundColor: onNote.withValues(alpha: 0.1),
+                  foregroundColor: onNote,
+                ),
                 visualDensity: VisualDensity.compact,
                 iconSize: 16,
                 tooltip: removeImage,
@@ -893,7 +1052,7 @@ class _SwipeBackground extends StatelessWidget {
       child: Align(
         alignment: alignment,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: _inset),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -995,24 +1154,23 @@ class _EditDialogState extends State<_EditDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
     final images = _images;
     final error = _error;
     final shiftEnter = _shiftEnterBreaksLine(theme.platform);
+    // The thought's own note, taken back off the list.
     return AlertDialog(
-      title: Row(
-        children: [
-          Expanded(child: Text(l10n.editTitle)),
-          IconButton(
-            tooltip: l10n.delete,
-            onPressed: () {
-              Navigator.pop(context);
-              widget.onDelete();
-            },
-            icon: const Icon(Icons.delete_outline_rounded),
-          ),
-        ],
+      semanticLabel: l10n.editTitle,
+      backgroundColor: scheme.primaryContainer,
+      shape: const RoundedRectangleBorder(borderRadius: paperRadius),
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: _gutter,
+        vertical: 24,
       ),
+      contentPadding: const EdgeInsets.fromLTRB(_inset, 18, _inset, 0),
+      actionsPadding: const EdgeInsets.fromLTRB(8, 12, 12, 12),
+      actionsAlignment: MainAxisAlignment.spaceBetween,
       scrollable: true,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1057,6 +1215,15 @@ class _EditDialogState extends State<_EditDialog> {
                 textCapitalization: TextCapitalization.sentences,
                 onEditingComplete: _save,
                 contextMenuBuilder: contextMenuBuilder,
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontSize: 22,
+                  color: scheme.onPrimaryContainer,
+                ),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 4),
+                ),
               ),
             ),
           ),
@@ -1074,16 +1241,42 @@ class _EditDialogState extends State<_EditDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.cancel),
+        IconButton(
+          tooltip: l10n.delete,
+          color: scheme.onPrimaryContainer,
+          onPressed: () {
+            Navigator.pop(context);
+            widget.onDelete();
+          },
+          icon: const Icon(Icons.delete_outline_rounded),
         ),
-        ValueListenableBuilder(
-          valueListenable: _controller,
-          builder: (context, value, _) => FilledButton(
-            onPressed: _canSave(value.text) ? _save : null,
-            child: Text(l10n.save),
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: scheme.onPrimaryContainer,
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: Text(l10n.cancel),
+            ),
+            const SizedBox(width: 8),
+            ValueListenableBuilder(
+              valueListenable: _controller,
+              builder: (context, value, _) => FilledButton(
+                style: FilledButton.styleFrom(
+                  disabledBackgroundColor: scheme.onPrimaryContainer.withValues(
+                    alpha: 0.08,
+                  ),
+                  disabledForegroundColor: scheme.onPrimaryContainer.withValues(
+                    alpha: 0.4,
+                  ),
+                ),
+                onPressed: _canSave(value.text) ? _save : null,
+                child: Text(l10n.save),
+              ),
+            ),
+          ],
         ),
       ],
     );

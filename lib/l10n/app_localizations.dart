@@ -140,7 +140,7 @@ abstract class AppLocalizations {
   /// **'Delete'**
   String get delete;
 
-  /// Title of the dialog opened by tapping a thought.
+  /// Accessibility label of the dialog opened by tapping a thought.
   ///
   /// In en, this message translates to:
   /// **'Edit thought'**
@@ -158,35 +158,17 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get save;
 
-  /// Age of a thought noted less than a minute ago.
+  /// Heading above the thoughts noted today.
   ///
   /// In en, this message translates to:
-  /// **'just now'**
-  String get justNow;
+  /// **'Today'**
+  String get today;
 
-  /// Age of a thought noted less than an hour ago.
+  /// Heading above the thoughts noted on the previous calendar day. Older days show a weekday, then a date.
   ///
   /// In en, this message translates to:
-  /// **'{count} min ago'**
-  String minutesAgo(int count);
-
-  /// Age of a thought noted earlier today.
-  ///
-  /// In en, this message translates to:
-  /// **'{count} h ago'**
-  String hoursAgo(int count);
-
-  /// Age of a thought noted on the previous calendar day.
-  ///
-  /// In en, this message translates to:
-  /// **'yesterday'**
+  /// **'Yesterday'**
   String get yesterday;
-
-  /// Age of a thought noted 2 to 6 calendar days ago. Older thoughts show a date instead.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 day ago} other{{count} days ago}}'**
-  String daysAgo(int count);
 
   /// Context menu item of the capture field that attaches the image from the clipboard.
   ///

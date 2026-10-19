@@ -127,7 +127,7 @@ void main() {
     await store.flush();
 
     expect(find.text('Call the garage'), findsOneWidget);
-    expect(find.text('just now'), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
     expect(captureField(tester).controller!.text, isEmpty);
     expect(captureField(tester).focusNode!.hasFocus, isTrue);
     expect(storage.saved.single.text, 'Call the garage');
@@ -240,6 +240,69 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Undo'), findsOneWidget);
+  });
+
+  testWidgets('thoughts are listed under their day', (tester) async {
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '3', text: 'Buy bread', createdAt: now),
+      Thought(id: '2', text: 'Call the garage', createdAt: now),
+      Thought(
+        id: '1',
+        text: 'Water the plants',
+        createdAt: now.subtract(const Duration(days: 1)),
+      ),
+    ]);
+
+    double top(String text) => tester.getTopLeft(find.text(text)).dy;
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+    expect(top('Today'), lessThan(top('Buy bread')));
+    expect(top('Call the garage'), lessThan(top('Yesterday')));
+    expect(top('Yesterday'), lessThan(top('Water the plants')));
+  });
+
+  testWidgets('the first thought of the day brings its heading', (
+    tester,
+  ) async {
+    await pumpApp(tester, [
+      Thought(
+        id: '1',
+        text: 'Water the plants',
+        createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      ),
+    ]);
+    expect(find.text('Today'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'Buy bread');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+  });
+
+  testWidgets('a day without thoughts loses its heading until undo', (
+    tester,
+  ) async {
+    await pumpApp(tester, [
+      Thought(id: '2', text: 'Buy bread', createdAt: DateTime.now()),
+      Thought(
+        id: '1',
+        text: 'Water the plants',
+        createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      ),
+    ]);
+
+    await tester.drag(find.text('Water the plants'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Yesterday'), findsNothing);
+    expect(find.text('Today'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Yesterday'), findsOneWidget);
+    expect(find.text('Water the plants'), findsOneWidget);
   });
 
   testWidgets('the edit dialog deletes the thought, with undo', (tester) async {
@@ -371,7 +434,7 @@ void main() {
           id: '1',
           text: '',
           images: ['receipt'],
-          createdAt: DateTime.now(),
+          createdAt: DateTime(2026, 3, 2, 9, 41),
         ),
       ],
       {'receipt': png},
@@ -379,7 +442,7 @@ void main() {
     FilledButton saveButton() =>
         tester.widget(find.widgetWithText(FilledButton, 'Save'));
 
-    await tester.tap(find.text('just now'));
+    await tester.tap(find.text('9:41 AM'));
     await tester.pumpAndSettle();
     expect(saveButton().onPressed, isNotNull);
 
