@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -81,15 +82,19 @@ class _CaptureScreenState extends State<CaptureScreen> {
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
 
-  void _remove(Thought thought) {
+  void _remove(Thought thought, {bool swiped = false}) {
     final index = _store.remove(thought.id);
     if (index == -1) return;
+    final l10n = AppLocalizations.of(context);
+    final age = relativeTime(thought.createdAt, DateTime.now(), l10n);
+    // A swiped tile has already slid away. Any other one collapses.
     _listKey.currentState?.removeItem(
       index,
-      (_, _) => const SizedBox.shrink(),
-      duration: Duration.zero,
+      (_, animation) => swiped
+          ? const SizedBox.shrink()
+          : IgnorePointer(child: _buildItem(thought, animation, age)),
+      duration: swiped ? Duration.zero : _motion,
     );
-    final l10n = AppLocalizations.of(context);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -110,7 +115,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Future<void> _edit(Thought thought) async {
     final edit = await showDialog<_Edit>(
       context: context,
-      builder: (_) => _EditDialog(store: _store, thought: thought),
+      builder: (_) => _EditDialog(
+        store: _store,
+        thought: thought,
+        onDelete: () => _remove(thought),
+      ),
     );
     if (edit != null) {
       _store.update(thought.id, text: edit.text, image: edit.image);
@@ -315,13 +324,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
             secondaryBackground: const _SwipeBackground(
               alignment: AlignmentDirectional.centerEnd,
             ),
-            onDismissed: (_) => _remove(thought),
+            onDismissed: (_) => _remove(thought, swiped: true),
             child: _ThoughtTile(
               text: thought.text,
               image: image,
               age: age,
               onTap: () => _edit(thought),
               onImageTap: image == null ? null : () => _view(image),
+              onDelete: () => _remove(thought),
             ),
           ),
         ),
@@ -330,13 +340,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 }
 
-class _ThoughtTile extends StatelessWidget {
+class _ThoughtTile extends StatefulWidget {
   const _ThoughtTile({
     required this.text,
     required this.image,
     required this.age,
     required this.onTap,
     required this.onImageTap,
+    required this.onDelete,
   });
 
   final String text;
@@ -344,34 +355,85 @@ class _ThoughtTile extends StatelessWidget {
   final String age;
   final VoidCallback onTap;
   final VoidCallback? onImageTap;
+  final VoidCallback onDelete;
+
+  @override
+  State<_ThoughtTile> createState() => _ThoughtTileState();
+}
+
+class _ThoughtTileState extends State<_ThoughtTile> {
+  var _hovered = false;
+  var _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final image = this.image;
+    final text = widget.text;
+    final image = widget.image;
+    // Touch screens have the swipe. Where a pointer hovers, a button shows up
+    // on hover, or on keyboard focus.
+    final deleteButton =
+        kIsWeb ||
+        switch (theme.platform) {
+          TargetPlatform.macOS ||
+          TargetPlatform.windows ||
+          TargetPlatform.linux => true,
+          _ => false,
+        };
     // Opaque so the swipe background only shows where the tile has slid away.
     return Material(
       color: theme.colorScheme.surface,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (text.isNotEmpty) Text(text, style: theme.textTheme.bodyLarge),
-              if (image != null)
-                Padding(
-                  padding: EdgeInsets.only(top: text.isEmpty ? 2 : 10),
-                  child: _ImageThumbnail(
-                    image: image,
-                    maxHeight: 160,
-                    onTap: onImageTap,
+      child: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onFocusChange: (focused) => setState(() => _focused = focused),
+        child: InkWell(
+          onTap: widget.onTap,
+          onHover: (hovered) => setState(() => _hovered = hovered),
+          child: Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              24,
+              14,
+              deleteButton ? 12 : 24,
+              14,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (text.isNotEmpty)
+                        Text(text, style: theme.textTheme.bodyLarge),
+                      if (image != null)
+                        Padding(
+                          padding: EdgeInsets.only(top: text.isEmpty ? 2 : 10),
+                          child: _ImageThumbnail(
+                            image: image,
+                            maxHeight: 160,
+                            onTap: widget.onImageTap,
+                          ),
+                        ),
+                      SizedBox(height: image == null ? 4 : 8),
+                      Text(widget.age, style: theme.textTheme.bodySmall),
+                    ],
                   ),
                 ),
-              SizedBox(height: image == null ? 4 : 8),
-              Text(age, style: theme.textTheme.bodySmall),
-            ],
+                if (deleteButton) ...[
+                  const SizedBox(width: 8),
+                  AnimatedOpacity(
+                    opacity: _hovered || _focused ? 1 : 0,
+                    duration: const Duration(milliseconds: 120),
+                    alwaysIncludeSemantics: true,
+                    child: IconButton(
+                      tooltip: AppLocalizations.of(context).delete,
+                      onPressed: widget.onDelete,
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -524,10 +586,15 @@ class _SwipeBackground extends StatelessWidget {
 typedef _Edit = ({String text, String? image});
 
 class _EditDialog extends StatefulWidget {
-  const _EditDialog({required this.store, required this.thought});
+  const _EditDialog({
+    required this.store,
+    required this.thought,
+    required this.onDelete,
+  });
 
   final ThoughtStore store;
   final Thought thought;
+  final VoidCallback onDelete;
 
   @override
   State<_EditDialog> createState() => _EditDialogState();
@@ -566,7 +633,19 @@ class _EditDialogState extends State<_EditDialog> {
     final image = _image;
     final error = _error;
     return AlertDialog(
-      title: Text(l10n.editTitle),
+      title: Row(
+        children: [
+          Expanded(child: Text(l10n.editTitle)),
+          IconButton(
+            tooltip: l10n.delete,
+            onPressed: () {
+              Navigator.pop(context);
+              widget.onDelete();
+            },
+            icon: const Icon(Icons.delete_outline_rounded),
+          ),
+        ],
+      ),
       scrollable: true,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

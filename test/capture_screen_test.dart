@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -150,6 +151,62 @@ void main() {
     expect(find.text('Buy bread'), findsOneWidget);
     expect(store.thoughts.single.id, '1');
   });
+
+  testWidgets('the edit dialog deletes the thought, with undo', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    await tester.tap(find.text('Buy bread'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Delete'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Buy bread'), findsNothing);
+    expect(store.thoughts, isEmpty);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Buy bread'), findsOneWidget);
+  });
+
+  testWidgets('hovering a thought with a mouse reveals a delete button', (
+    tester,
+  ) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+    double opacity() => tester
+        .widget<AnimatedOpacity>(
+          find.ancestor(
+            of: find.byTooltip('Delete'),
+            matching: find.byType(AnimatedOpacity),
+          ),
+        )
+        .opacity;
+
+    expect(opacity(), 0);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(find.text('Buy bread')));
+    await tester.pumpAndSettle();
+    expect(opacity(), 1);
+
+    await tester.tap(find.byTooltip('Delete'));
+    await tester.pumpAndSettle();
+    expect(find.text('Buy bread'), findsNothing);
+    expect(store.thoughts, isEmpty);
+  }, variant: TargetPlatformVariant.desktop());
+
+  testWidgets('touch screens rely on the swipe, without a delete button', (
+    tester,
+  ) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    expect(find.byTooltip('Delete'), findsNothing);
+  }, variant: TargetPlatformVariant.mobile());
 
   testWidgets('tapping a thought edits it', (tester) async {
     await pumpApp(tester, [
