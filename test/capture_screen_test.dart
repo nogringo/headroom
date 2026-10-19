@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:headroom/main.dart';
 import 'package:headroom/thought.dart';
@@ -6,15 +9,47 @@ import 'package:headroom/thought_store.dart';
 
 import 'in_memory_storage.dart';
 
+final png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+);
+
 void main() {
   late InMemoryStorage storage;
   late ThoughtStore store;
+  Uint8List? clipboardImage;
+  String? clipboardText;
 
   Future<void> pumpApp(
     WidgetTester tester, [
     List<Thought> initial = const [],
+    Map<String, Uint8List> images = const {},
   ]) async {
-    storage = InMemoryStorage(initial);
+    clipboardImage = null;
+    clipboardText = null;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('pasteboard'),
+      (call) async => call.method == 'image' ? clipboardImage : null,
+    );
+    messenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async => switch (call.method) {
+        'Clipboard.hasStrings' => {'value': clipboardText != null},
+        'Clipboard.getData' when clipboardText != null => {
+          'text': clipboardText,
+        },
+        _ => null,
+      },
+    );
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('pasteboard'),
+        null,
+      );
+      messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    storage = InMemoryStorage(initial)..images.addAll(images);
     store = ThoughtStore(storage);
     await store.load();
     await tester.pumpWidget(HeadroomApp(store: store));
@@ -23,6 +58,39 @@ void main() {
 
   TextField captureField(WidgetTester tester) =>
       tester.widget<TextField>(find.byType(TextField));
+
+  IconButton sendButton(WidgetTester tester) => tester.widget<IconButton>(
+    find.widgetWithIcon(IconButton, Icons.arrow_upward_rounded),
+  );
+
+  Finder listedImage() => find.descendant(
+    of: find.byType(AnimatedList),
+    matching: find.byType(Image),
+  );
+
+  Future<void> pressPaste(WidgetTester tester) async {
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> pasteImageFromMenu(WidgetTester tester, [Finder? field]) async {
+    await tester.longPress(field ?? find.byType(TextField));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paste image'));
+    await tester.pumpAndSettle();
+  }
+
+  // Decoding runs in the engine, outside the test's fake clock.
+  Future<void> decodeImages(WidgetTester tester) async {
+    for (var i = 0; i < 5; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump();
+    }
+  }
 
   testWidgets('opens with the field focused and an empty list', (tester) async {
     await pumpApp(tester);
@@ -53,17 +121,16 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    IconButton button() => tester.widget<IconButton>(find.byType(IconButton));
 
-    expect(button().onPressed, isNull);
+    expect(sendButton(tester).onPressed, isNull);
 
     await tester.enterText(find.byType(TextField), 'Buy bread');
     await tester.pump();
-    await tester.tap(find.byType(IconButton));
+    await tester.tap(find.byWidget(sendButton(tester)));
     await tester.pumpAndSettle();
 
     expect(find.text('Buy bread'), findsOneWidget);
-    expect(button().onPressed, isNull);
+    expect(sendButton(tester).onPressed, isNull);
   });
 
   testWidgets('swiping deletes a thought and undo brings it back', (
@@ -97,6 +164,153 @@ void main() {
 
     expect(find.text('Buy bread'), findsOneWidget);
     expect(store.thoughts.single.text, 'Buy bread');
+  });
+
+  testWidgets('editing adds an image to a thought', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Poster', createdAt: DateTime.now()),
+    ]);
+    clipboardImage = png;
+
+    await tester.tap(find.text('Poster'));
+    await tester.pumpAndSettle();
+    await pressPaste(tester);
+    expect(find.byTooltip('Remove image'), findsOneWidget);
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await store.flush();
+
+    expect(storage.images[storage.saved.single.image], png);
+    expect(listedImage(), findsOneWidget);
+  });
+
+  testWidgets('editing removes the image, then text is required', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      [Thought(id: '1', text: '', image: 'receipt', createdAt: DateTime.now())],
+      {'receipt': png},
+    );
+    FilledButton saveButton() =>
+        tester.widget(find.widgetWithText(FilledButton, 'Save'));
+
+    await tester.tap(find.text('just now'));
+    await tester.pumpAndSettle();
+    expect(saveButton().onPressed, isNotNull);
+
+    await tester.tap(find.byTooltip('Remove image'));
+    await tester.pump();
+    expect(saveButton().onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField).last, 'Receipt');
+    await tester.pump();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(store.thoughts.single.text, 'Receipt');
+    expect(store.thoughts.single.image, isNull);
+    expect(listedImage(), findsNothing);
+  });
+
+  testWidgets('editing reports a missing image inside the dialog', (
+    tester,
+  ) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Poster', createdAt: DateTime.now()),
+    ]);
+
+    await tester.tap(find.text('Poster'));
+    await tester.pumpAndSettle();
+    await pasteImageFromMenu(tester, find.byType(TextField).last);
+
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('No image in the clipboard.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('pasting an image alone attaches it, ready to send', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    clipboardImage = png;
+
+    await pressPaste(tester);
+    expect(find.byTooltip('Remove image'), findsOneWidget);
+    expect(sendButton(tester).onPressed, isNotNull);
+
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    await store.flush();
+
+    expect(find.byTooltip('Remove image'), findsNothing);
+    expect(listedImage(), findsOneWidget);
+    final saved = storage.saved.single;
+    expect(saved.text, isEmpty);
+    expect(storage.images[saved.image], png);
+  });
+
+  testWidgets('pasting prefers text when the clipboard also has some', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    clipboardImage = png;
+    clipboardText = 'Copied from Word';
+
+    await pressPaste(tester);
+
+    expect(captureField(tester).controller!.text, 'Copied from Word');
+    expect(find.byTooltip('Remove image'), findsNothing);
+  });
+
+  testWidgets('"Paste image" attaches the image, or says there is none', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await pasteImageFromMenu(tester);
+    expect(find.text('No image in the clipboard.'), findsOneWidget);
+
+    clipboardImage = png;
+    clipboardText = 'Ignored';
+    await pasteImageFromMenu(tester);
+    expect(find.byTooltip('Remove image'), findsOneWidget);
+    expect(captureField(tester).controller!.text, isEmpty);
+
+    await tester.tap(find.byTooltip('Remove image'));
+    await tester.pump();
+    expect(find.byTooltip('Remove image'), findsNothing);
+    expect(sendButton(tester).onPressed, isNull);
+  });
+
+  testWidgets('tapping an image shows it full screen', (tester) async {
+    await pumpApp(
+      tester,
+      [
+        Thought(
+          id: '1',
+          text: 'Receipt',
+          image: 'receipt',
+          createdAt: DateTime.now(),
+        ),
+      ],
+      {'receipt': png},
+    );
+    await decodeImages(tester);
+
+    await tester.tap(listedImage());
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsNothing);
   });
 
   testWidgets('follows a French device locale', (tester) async {

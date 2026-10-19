@@ -2,17 +2,24 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:headroom/file_thought_storage.dart';
 import 'package:headroom/thought.dart';
 
 void main() {
-  test('round-trips thoughts and replaces the previous file', () async {
-    final directory = await Directory.systemTemp.createTemp('headroom');
-    addTearDown(() => directory.delete(recursive: true));
-    final storage = FileThoughtStorage(File('${directory.path}/thoughts.json'));
+  late Directory directory;
+  late FileThoughtStorage storage;
 
+  setUp(() async {
+    directory = await Directory.systemTemp.createTemp('headroom');
+    storage = FileThoughtStorage(directory);
+  });
+
+  tearDown(() => directory.delete(recursive: true));
+
+  test('round-trips thoughts and replaces the previous file', () async {
     expect(await storage.read(), isEmpty);
 
     final first = Thought(
@@ -22,15 +29,28 @@ void main() {
     );
     final second = Thought(
       id: '2',
-      text: 'Buy bread',
+      text: '',
+      image: 'photo',
       createdAt: DateTime(2026, 10, 19, 10),
     );
     await storage.write([first]);
     await storage.write([second, first]);
     final loaded = await storage.read();
 
-    expect(loaded.map((t) => t.text), ['Buy bread', 'Call the garage']);
+    expect(loaded.map((t) => t.text), ['', 'Call the garage']);
+    expect(loaded.map((t) => t.image), ['photo', null]);
     expect(loaded.last.createdAt, first.createdAt);
     expect(File('${directory.path}/thoughts.json.tmp').existsSync(), isFalse);
+  });
+
+  test('stores images and deletes the ones no longer kept', () async {
+    final kept = await storage.saveImage(Uint8List.fromList([1, 2, 3]));
+    final dropped = await storage.saveImage(Uint8List.fromList([4, 5]));
+    expect(kept, isNot(dropped));
+
+    await storage.deleteImagesExcept({kept});
+
+    expect(await storage.readImage(kept), [1, 2, 3]);
+    await expectLater(storage.readImage(dropped), throwsA(isA<IOException>()));
   });
 }

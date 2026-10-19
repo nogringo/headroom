@@ -1,6 +1,6 @@
 {
   "@@locale": "fr",
-  "captureHint": "Qu'est-ce que tu as en tête ?",
+  "captureHint": "Qu'est-ce que tu as en tête\u00a0?",
   "captureButton": "Noter",
   "emptyList": "Ce que tu notes s'affiche ici.",
   "saveFailed": "Échec de l'enregistrement sur l'appareil. Nouvel essai à la prochaine modification.",
@@ -14,5 +14,10 @@
   "minutesAgo": "il y a {count} min",
   "hoursAgo": "il y a {count} h",
   "yesterday": "hier",
-  "daysAgo": "{count, plural, =1{il y a 1 jour} other{il y a {count} jours}}"
+  "daysAgo": "{count, plural, =1{il y a 1 jour} other{il y a {count} jours}}",
+  "pasteImage": "Coller l'image",
+  "noImageInClipboard": "Aucune image dans le presse-papier.",
+  "imageNotAdded": "Impossible d'ajouter l'image.",
+  "removeImage": "Retirer l'image",
+  "imageLabel": "Image"
 }

@@ -66,4 +66,19 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get pasteImage => 'Paste image';
+
+  @override
+  String get noImageInClipboard => 'No image in the clipboard.';
+
+  @override
+  String get imageNotAdded => 'Couldn\'t add the image.';
+
+  @override
+  String get removeImage => 'Remove image';
+
+  @override
+  String get imageLabel => 'Image';
 }

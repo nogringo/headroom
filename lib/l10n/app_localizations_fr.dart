@@ -66,4 +66,19 @@ class AppLocalizationsFr extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get pasteImage => 'Coller l\'image';
+
+  @override
+  String get noImageInClipboard => 'Aucune image dans le presse-papier.';
+
+  @override
+  String get imageNotAdded => 'Impossible d\'ajouter l\'image.';
+
+  @override
+  String get removeImage => 'Retirer l\'image';
+
+  @override
+  String get imageLabel => 'Image';
 }

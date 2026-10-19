@@ -1,7 +1,10 @@
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 
+import 'report_error.dart';
+import 'stored_image.dart';
 import 'thought.dart';
 import 'thought_storage.dart';
 
@@ -23,15 +26,29 @@ class ThoughtStore extends ChangeNotifier {
       ..clear()
       ..addAll(await _storage.read());
     notifyListeners();
+    // Drops images pasted but never sent, and those of deleted thoughts.
+    // Done here rather than on delete so that undo keeps working.
+    try {
+      await _storage.deleteImagesExcept({for (final t in _thoughts) ?t.image});
+    } catch (error, stack) {
+      reportError(error, stack);
+    }
   }
 
-  Thought? add(String text) {
+  /// Returns the name to pass to [add].
+  Future<String> saveImage(Uint8List bytes) => _storage.saveImage(bytes);
+
+  ImageProvider imageNamed(String name) => StoredImage(_storage, name);
+
+  /// Needs a non-blank [text], an [image], or both.
+  Thought? add(String text, {String? image}) {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) return null;
+    if (trimmed.isEmpty && image == null) return null;
     final now = DateTime.now();
     final thought = Thought(
       id: '${now.microsecondsSinceEpoch}',
       text: trimmed,
+      image: image,
       createdAt: now,
     );
     _thoughts.insert(0, thought);
@@ -39,11 +56,19 @@ class ThoughtStore extends ChangeNotifier {
     return thought;
   }
 
-  void update(String id, String text) {
-    final trimmed = text.trim();
+  /// Needs a non-blank [text], an [image], or both. A replaced or removed
+  /// image is deleted at the next [load].
+  void update(String id, {required String text, required String? image}) {
     final index = _thoughts.indexWhere((t) => t.id == id);
-    if (index == -1 || trimmed.isEmpty) return;
-    _thoughts[index] = _thoughts[index].copyWith(text: trimmed);
+    final trimmed = text.trim();
+    if (index == -1 || (trimmed.isEmpty && image == null)) return;
+    final thought = _thoughts[index];
+    _thoughts[index] = Thought(
+      id: thought.id,
+      text: trimmed,
+      image: image,
+      createdAt: thought.createdAt,
+    );
     _changed();
   }
 
@@ -76,13 +101,7 @@ class ThoughtStore extends ChangeNotifier {
         await _storage.write(snapshot);
         _setSaveFailed(false);
       } catch (error, stack) {
-        FlutterError.reportError(
-          FlutterErrorDetails(
-            exception: error,
-            stack: stack,
-            library: 'headroom',
-          ),
-        );
+        reportError(error, stack);
         _setSaveFailed(true);
       }
     });

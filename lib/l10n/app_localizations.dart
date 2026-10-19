@@ -187,6 +187,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 day ago} other{{count} days ago}}'**
   String daysAgo(int count);
+
+  /// Context menu item of the capture field that attaches the image from the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste image'**
+  String get pasteImage;
+
+  /// Snackbar shown when "Paste image" finds no image in the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'No image in the clipboard.'**
+  String get noImageInClipboard;
+
+  /// Snackbar shown when a pasted image could not be saved.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t add the image.'**
+  String get imageNotAdded;
+
+  /// Tooltip of the button that removes the pasted image before sending.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove image'**
+  String get removeImage;
+
+  /// Accessibility label of a thought's image. Tapping it shows the image full screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Image'**
+  String get imageLabel;
 }
 
 class _AppLocalizationsDelegate

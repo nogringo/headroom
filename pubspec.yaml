@@ -12,6 +12,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: any
+  pasteboard: ^0.5.0
   path_provider: ^2.1.6
   web: ^1.1.1
 

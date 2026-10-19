@@ -77,5 +77,25 @@
         "example": "4"
       }
     }
+  },
+  "pasteImage": "Paste image",
+  "@pasteImage": {
+    "description": "Context menu item of the capture field that attaches the image from the clipboard."
+  },
+  "noImageInClipboard": "No image in the clipboard.",
+  "@noImageInClipboard": {
+    "description": "Snackbar shown when \"Paste image\" finds no image in the clipboard."
+  },
+  "imageNotAdded": "Couldn't add the image.",
+  "@imageNotAdded": {
+    "description": "Snackbar shown when a pasted image could not be saved."
+  },
+  "removeImage": "Remove image",
+  "@removeImage": {
+    "description": "Tooltip of the button that removes the pasted image before sending."
+  },
+  "imageLabel": "Image",
+  "@imageLabel": {
+    "description": "Accessibility label of a thought's image. Tapping it shows the image full screen."
   }
 }
