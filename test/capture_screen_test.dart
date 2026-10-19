@@ -22,6 +22,8 @@ void main() {
   late ThoughtStore store;
   Uint8List? clipboardImage;
   String? clipboardText;
+  Uint8List? copiedImage;
+  var copyFails = false;
 
   Future<void> pumpApp(
     WidgetTester tester, [
@@ -30,11 +32,21 @@ void main() {
   ]) async {
     clipboardImage = null;
     clipboardText = null;
+    copiedImage = null;
+    copyFails = false;
     final messenger = tester.binding.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(
-      const MethodChannel('pasteboard'),
-      (call) async => call.method == 'image' ? clipboardImage : null,
-    );
+    messenger.setMockMethodCallHandler(const MethodChannel('pasteboard'), (
+      call,
+    ) async {
+      switch (call.method) {
+        case 'image':
+          return clipboardImage;
+        case 'writeImage':
+          if (copyFails) throw PlatformException(code: 'denied');
+          copiedImage = call.arguments as Uint8List;
+      }
+      return null;
+    });
     messenger.setMockMethodCallHandler(
       SystemChannels.platform,
       (call) async => switch (call.method) {
@@ -454,6 +466,161 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsNothing);
   });
+
+  Future<void> openViewer(WidgetTester tester) async {
+    await pumpApp(
+      tester,
+      [
+        Thought(
+          id: '1',
+          text: 'Receipt',
+          images: ['receipt'],
+          createdAt: DateTime.now(),
+        ),
+      ],
+      {'receipt': png},
+    );
+    await decodeImages(tester);
+    await tester.tap(listedImage());
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('the viewer copies the image it shows', (tester) async {
+    await openViewer(tester);
+
+    await tester.tap(find.byTooltip('Copy image'));
+    await tester.pumpAndSettle();
+    expect(copiedImage, png);
+    expect(find.byTooltip('Image copied'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(find.byTooltip('Copy image'), findsOneWidget);
+  });
+
+  testWidgets('Ctrl+C in the viewer copies the image', (tester) async {
+    await openViewer(tester);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    expect(copiedImage, png);
+  });
+
+  testWidgets('a failed copy says so inside the viewer', (tester) async {
+    await openViewer(tester);
+    copyFails = true;
+
+    await tester.tap(find.byTooltip('Copy image'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isA<PlatformException>());
+    expect(find.text("Couldn't copy the image."), findsOneWidget);
+    expect(find.byTooltip('Copy image'), findsOneWidget);
+  });
+
+  testWidgets('the viewer offers no copy on Linux', (tester) async {
+    await openViewer(tester);
+
+    expect(find.byTooltip('Copy image'), findsNothing);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+
+  Future<void> pumpReceipt(WidgetTester tester) async {
+    await pumpApp(
+      tester,
+      [
+        Thought(
+          id: '1',
+          text: 'Receipt',
+          images: ['receipt'],
+          createdAt: DateTime.now(),
+        ),
+      ],
+      {'receipt': png},
+    );
+    await decodeImages(tester);
+  }
+
+  Future<void> rightClick(WidgetTester tester, Finder finder) async {
+    await tester.tap(
+      finder,
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('right-clicking a listed image offers to copy it', (
+    tester,
+  ) async {
+    await pumpReceipt(tester);
+
+    await rightClick(tester, listedImage());
+    await tester.tap(find.text('Copy image'));
+    await tester.pumpAndSettle();
+
+    expect(copiedImage, png);
+    expect(find.text('Copy image'), findsNothing);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('long-pressing a listed image offers to copy it', (tester) async {
+    await pumpReceipt(tester);
+
+    await tester.longPress(listedImage());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy image'));
+    await tester.pumpAndSettle();
+
+    expect(copiedImage, png);
+  });
+
+  testWidgets('clicking elsewhere closes the copy menu', (tester) async {
+    await pumpReceipt(tester);
+
+    await rightClick(tester, listedImage());
+    expect(find.text('Copy image'), findsOneWidget);
+
+    await tester.tap(find.byType(TextField));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy image'), findsNothing);
+    expect(copiedImage, isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets('a failed copy from the list says so', (tester) async {
+    await pumpReceipt(tester);
+    copyFails = true;
+
+    await tester.longPress(listedImage());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy image'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isA<PlatformException>());
+    expect(find.text("Couldn't copy the image."), findsOneWidget);
+  });
+
+  testWidgets('right-clicking in the viewer copies the image shown', (
+    tester,
+  ) async {
+    await openViewer(tester);
+
+    await rightClick(tester, find.byType(InteractiveViewer));
+    await tester.tap(find.text('Copy image'));
+    await tester.pumpAndSettle();
+
+    expect(copiedImage, png);
+    expect(find.byTooltip('Image copied'), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('Linux gets no copy menu', (tester) async {
+    await pumpReceipt(tester);
+
+    await rightClick(tester, listedImage());
+
+    expect(find.text('Copy image'), findsNothing);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
 
   testWidgets('the viewer turns between the images of a thought', (
     tester,

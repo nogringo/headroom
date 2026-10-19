@@ -235,6 +235,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Image already added.'**
   String get imageAlreadyAdded;
+
+  /// Button of the full screen viewer that copies the image shown to the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy image'**
+  String get copyImage;
+
+  /// Label the copy button takes for two seconds after a successful copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Image copied'**
+  String get imageCopied;
+
+  /// Shown in the full screen viewer when copying the image failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t copy the image.'**
+  String get imageNotCopied;
 }
 
 class _AppLocalizationsDelegate

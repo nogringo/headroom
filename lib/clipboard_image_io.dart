@@ -9,3 +9,9 @@ VoidCallback listenToPastedImages({
   required bool Function() accept,
   required ValueChanged<Uint8List> onImage,
 }) => () {};
+
+/// The pasteboard plugin cannot write images on Linux.
+bool get canCopyImages => defaultTargetPlatform != TargetPlatform.linux;
+
+Future<void> copyImage(Future<Uint8List> bytes) async =>
+    Pasteboard.writeImage(await bytes);

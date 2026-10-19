@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'capture_screen.dart';
 import 'file_thought_storage.dart'
@@ -9,6 +11,8 @@ import 'thought_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Headroom's own menus replace the browser's, fields included.
+  if (kIsWeb) await BrowserContextMenu.disableContextMenu();
   final store = ThoughtStore(await openThoughtStorage());
   await store.load();
   runApp(HeadroomApp(store: store));

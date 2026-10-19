@@ -90,4 +90,13 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get imageAlreadyAdded => 'Image déjà ajoutée.';
+
+  @override
+  String get copyImage => 'Copier l\'image';
+
+  @override
+  String get imageCopied => 'Image copiée';
+
+  @override
+  String get imageNotCopied => 'Impossible de copier l\'image.';
 }

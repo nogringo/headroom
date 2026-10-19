@@ -42,6 +42,8 @@ class ThoughtStore extends ChangeNotifier {
 
   ImageProvider imageNamed(String name) => StoredImage(_storage, name);
 
+  Future<Uint8List> readImage(String name) => _storage.readImage(name);
+
   /// Needs a non-blank [text], some [images], or both.
   Thought? add(String text, {List<String> images = const []}) {
     final trimmed = text.trim();

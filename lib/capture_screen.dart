@@ -6,9 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
+import 'clipboard_image_io.dart'
+    if (dart.library.js_interop) 'clipboard_image_web.dart';
 import 'image_paste.dart';
 import 'l10n/app_localizations.dart';
 import 'relative_time.dart';
+import 'report_error.dart';
 import 'thought.dart';
 import 'thought_store.dart';
 
@@ -83,6 +86,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
 
+  Future<void> _copyImage(String name) async {
+    try {
+      // No await before this call: on the web it must run inside the click.
+      await copyImage(_store.readImage(name));
+    } catch (error, stack) {
+      reportError(error, stack);
+      if (mounted) _showError(AppLocalizations.of(context).imageNotCopied);
+    }
+  }
+
   void _remove(Thought thought, {bool swiped = false}) {
     final index = _store.remove(thought.id);
     if (index == -1) return;
@@ -127,11 +140,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
-  void _view(List<ImageProvider> images, int index) => showDialog<void>(
+  void _view(List<String> names, int index) => showDialog<void>(
     context: context,
     barrierColor: Colors.black87,
     useSafeArea: false,
-    builder: (_) => _ImageViewer(images: images, initialIndex: index),
+    builder: (_) =>
+        _ImageViewer(store: _store, names: names, initialIndex: index),
   );
 
   List<ImageProvider> _imagesOf(Thought thought) => [
@@ -345,7 +359,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
               images: images,
               age: age,
               onTap: () => _edit(thought),
-              onImageTap: (index) => _view(images, index),
+              onImageTap: (index) => _view(thought.images, index),
+              onImageCopy: (index) => _copyImage(thought.images[index]),
               onDelete: () => _remove(thought),
             ),
           ),
@@ -362,6 +377,7 @@ class _ThoughtTile extends StatefulWidget {
     required this.age,
     required this.onTap,
     required this.onImageTap,
+    required this.onImageCopy,
     required this.onDelete,
   });
 
@@ -370,6 +386,7 @@ class _ThoughtTile extends StatefulWidget {
   final String age;
   final VoidCallback onTap;
   final ValueChanged<int> onImageTap;
+  final ValueChanged<int> onImageCopy;
   final VoidCallback onDelete;
 
   @override
@@ -432,6 +449,7 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                                   image: image,
                                   maxHeight: images.length == 1 ? 160 : 112,
                                   onTap: () => widget.onImageTap(index),
+                                  onCopy: () => widget.onImageCopy(index),
                                 ),
                             ],
                           ),
@@ -468,11 +486,15 @@ class _ImageThumbnail extends StatelessWidget {
     required this.image,
     required this.maxHeight,
     this.onTap,
+    this.onCopy,
   });
 
   final ImageProvider image;
   final double maxHeight;
   final VoidCallback? onTap;
+
+  /// Offered in a context menu when set.
+  final VoidCallback? onCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -487,15 +509,73 @@ class _ImageThumbnail extends StatelessWidget {
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: InkWell(
-            onTap: onTap,
-            child: Image(
-              image: ResizeImage(image, height: decodedHeight),
-              excludeFromSemantics: true,
+          child: _CopyImageMenu(
+            onCopy: onCopy,
+            child: InkWell(
+              onTap: onTap,
+              child: Image(
+                image: ResizeImage(image, height: decodedHeight),
+                excludeFromSemantics: true,
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Offers "Copy image" on right-click, or on long press for touch screens.
+class _CopyImageMenu extends StatefulWidget {
+  const _CopyImageMenu({required this.onCopy, required this.child});
+
+  /// No menu when null.
+  final VoidCallback? onCopy;
+  final Widget child;
+
+  @override
+  State<_CopyImageMenu> createState() => _CopyImageMenuState();
+}
+
+class _CopyImageMenuState extends State<_CopyImageMenu> {
+  final _menu = ContextMenuController();
+
+  @override
+  void dispose() {
+    _menu.remove();
+    super.dispose();
+  }
+
+  void _show(Offset position) {
+    final onCopy = widget.onCopy;
+    if (onCopy == null) return;
+    _menu.show(
+      context: context,
+      contextMenuBuilder: (context) => TapRegion(
+        onTapOutside: (_) => _menu.remove(),
+        child: AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: TextSelectionToolbarAnchors(primaryAnchor: position),
+          buttonItems: [
+            ContextMenuButtonItem(
+              label: AppLocalizations.of(context).copyImage,
+              onPressed: () {
+                _menu.remove();
+                onCopy();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.onCopy == null || !canCopyImages) return widget.child;
+    return GestureDetector(
+      onSecondaryTapUp: (details) => _show(details.globalPosition),
+      onLongPressStart: (details) => _show(details.globalPosition),
+      child: widget.child,
     );
   }
 }
@@ -546,9 +626,14 @@ class _AttachmentsPreview extends StatelessWidget {
 }
 
 class _ImageViewer extends StatefulWidget {
-  const _ImageViewer({required this.images, required this.initialIndex});
+  const _ImageViewer({
+    required this.store,
+    required this.names,
+    required this.initialIndex,
+  });
 
-  final List<ImageProvider> images;
+  final ThoughtStore store;
+  final List<String> names;
   final int initialIndex;
 
   @override
@@ -557,18 +642,23 @@ class _ImageViewer extends StatefulWidget {
 
 class _ImageViewerState extends State<_ImageViewer> {
   late final _pages = PageController(initialPage: widget.initialIndex);
+  // Its own messenger, since the app's snackbars sit under the viewer.
+  final _messenger = GlobalKey<ScaffoldMessengerState>();
   late var _index = widget.initialIndex;
   var _zoomed = false;
+  var _copied = false;
+  Timer? _copiedReset;
 
   @override
   void dispose() {
+    _copiedReset?.cancel();
     _pages.dispose();
     super.dispose();
   }
 
   void _turn(int by) {
     final page = _index + by;
-    if (page < 0 || page >= widget.images.length) return;
+    if (page < 0 || page >= widget.names.length) return;
     if (MediaQuery.disableAnimationsOf(context)) {
       _pages.jumpToPage(page);
     } else {
@@ -580,10 +670,32 @@ class _ImageViewerState extends State<_ImageViewer> {
     }
   }
 
+  Future<void> _copy() async {
+    try {
+      // No await before this call: on the web it must run inside the click.
+      await copyImage(widget.store.readImage(widget.names[_index]));
+    } catch (error, stack) {
+      reportError(error, stack);
+      if (!mounted) return;
+      _messenger.currentState
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context).imageNotCopied)),
+        );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _copiedReset?.cancel();
+    _copiedReset = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final count = widget.images.length;
+    final count = widget.names.length;
     void close() => Navigator.pop(context);
     // Dark discs keep the buttons readable over light images.
     final buttonStyle = IconButton.styleFrom(
@@ -614,56 +726,90 @@ class _ImageViewerState extends State<_ImageViewer> {
       bindings: {
         const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _turn(-1),
         const SingleActivator(LogicalKeyboardKey.arrowRight): () => _turn(1),
+        if (canCopyImages) ...{
+          const SingleActivator(LogicalKeyboardKey.keyC, meta: true): _copy,
+          const SingleActivator(LogicalKeyboardKey.keyC, control: true): _copy,
+        },
       },
       child: Focus(
         autofocus: true,
-        child: Material(
-          type: MaterialType.transparency,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              PageView.builder(
-                controller: _pages,
-                // A zoomed image pans instead of turning the page.
-                physics: _zoomed ? const NeverScrollableScrollPhysics() : null,
-                itemCount: count,
-                onPageChanged: (index) => setState(() {
-                  _index = index;
-                  _zoomed = false;
-                }),
-                itemBuilder: (context, index) => GestureDetector(
-                  onTap: close,
-                  child: _ZoomableImage(
-                    image: widget.images[index],
-                    onZoomChanged: (zoomed) => setState(() => _zoomed = zoomed),
-                  ),
-                ),
-              ),
-              if (count > 1)
-                SafeArea(
-                  child: Stack(
-                    children: [
-                      arrow(AlignmentDirectional.centerStart, -1),
-                      arrow(AlignmentDirectional.centerEnd, 1),
-                    ],
-                  ),
-                ),
-              SafeArea(
-                child: Align(
-                  alignment: AlignmentDirectional.topEnd,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: IconButton(
-                      style: buttonStyle,
-                      tooltip: MaterialLocalizations.of(context)
-                          .closeButtonTooltip,
-                      onPressed: close,
-                      icon: const Icon(Icons.close_rounded),
+        child: ScaffoldMessenger(
+          key: _messenger,
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                PageView.builder(
+                  controller: _pages,
+                  // A zoomed image pans instead of turning the page.
+                  physics: _zoomed
+                      ? const NeverScrollableScrollPhysics()
+                      : null,
+                  itemCount: count,
+                  onPageChanged: (index) => setState(() {
+                    _index = index;
+                    _zoomed = false;
+                    _copied = false;
+                  }),
+                  itemBuilder: (context, index) => GestureDetector(
+                    onTap: close,
+                    child: _CopyImageMenu(
+                      onCopy: _copy,
+                      child: _ZoomableImage(
+                        image: widget.store.imageNamed(widget.names[index]),
+                        onZoomChanged: (zoomed) =>
+                            setState(() => _zoomed = zoomed),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                if (count > 1)
+                  SafeArea(
+                    child: Stack(
+                      children: [
+                        arrow(AlignmentDirectional.centerStart, -1),
+                        arrow(AlignmentDirectional.centerEnd, 1),
+                      ],
+                    ),
+                  ),
+                SafeArea(
+                  child: Align(
+                    alignment: AlignmentDirectional.topEnd,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (canCopyImages) ...[
+                            IconButton(
+                              style: buttonStyle,
+                              tooltip: _copied
+                                  ? l10n.imageCopied
+                                  : l10n.copyImage,
+                              onPressed: _copy,
+                              icon: Icon(
+                                _copied
+                                    ? Icons.check_rounded
+                                    : Icons.content_copy_rounded,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          IconButton(
+                            style: buttonStyle,
+                            tooltip: MaterialLocalizations.of(context)
+                                .closeButtonTooltip,
+                            onPressed: close,
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

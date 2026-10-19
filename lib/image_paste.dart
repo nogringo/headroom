@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -57,7 +56,8 @@ class _ImagePasteState extends State<ImagePaste> {
     super.dispose();
   }
 
-  /// Returns whether the clipboard held an image.
+  /// Returns whether the clipboard held an image. A failed read counts as
+  /// none, so that Cmd/Ctrl+V falls back to pasting text.
   Future<bool> _pasteImage() async {
     Uint8List? bytes;
     try {
@@ -71,9 +71,22 @@ class _ImagePasteState extends State<ImagePaste> {
   }
 
   Future<void> _pasteImageFromMenu() async {
-    if (!await _pasteImage() && mounted) {
-      widget.onError(AppLocalizations.of(context).noImageInClipboard);
+    final l10n = AppLocalizations.of(context);
+    Uint8List? bytes;
+    try {
+      // No await before this call: browsers only read the clipboard inside
+      // the click.
+      bytes = await readClipboardImage();
+    } catch (error, stack) {
+      reportError(error, stack);
+      if (mounted) widget.onError(l10n.imageNotAdded);
+      return;
     }
+    if (bytes == null) {
+      if (mounted) widget.onError(l10n.noImageInClipboard);
+      return;
+    }
+    await _attach(bytes);
   }
 
   Future<void> _attach(Uint8List bytes) async {
@@ -93,16 +106,13 @@ class _ImagePasteState extends State<ImagePaste> {
     anchors: editableText.contextMenuAnchors,
     buttonItems: [
       ...editableText.contextMenuButtonItems,
-      // On the web, the browser's own menu shows instead, and its "Paste"
-      // reaches listenToPastedImages.
-      if (!kIsWeb)
-        ContextMenuButtonItem(
-          label: AppLocalizations.of(context).pasteImage,
-          onPressed: () {
-            editableText.hideToolbar();
-            _pasteImageFromMenu();
-          },
-        ),
+      ContextMenuButtonItem(
+        label: AppLocalizations.of(context).pasteImage,
+        onPressed: () {
+          editableText.hideToolbar();
+          _pasteImageFromMenu();
+        },
+      ),
     ],
   );
 

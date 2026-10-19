@@ -109,5 +109,17 @@
   "imageAlreadyAdded": "Image already added.",
   "@imageAlreadyAdded": {
     "description": "Shown when the pasted image is already among the images being added."
+  },
+  "copyImage": "Copy image",
+  "@copyImage": {
+    "description": "Button of the full screen viewer that copies the image shown to the clipboard."
+  },
+  "imageCopied": "Image copied",
+  "@imageCopied": {
+    "description": "Label the copy button takes for two seconds after a successful copy."
+  },
+  "imageNotCopied": "Couldn't copy the image.",
+  "@imageNotCopied": {
+    "description": "Shown in the full screen viewer when copying the image failed."
   }
 }

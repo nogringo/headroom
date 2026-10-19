@@ -22,5 +22,8 @@
   "imageLabel": "Image",
   "previousImage": "Image précédente",
   "nextImage": "Image suivante",
-  "imageAlreadyAdded": "Image déjà ajoutée."
+  "imageAlreadyAdded": "Image déjà ajoutée.",
+  "copyImage": "Copier l'image",
+  "imageCopied": "Image copiée",
+  "imageNotCopied": "Impossible de copier l'image."
 }
