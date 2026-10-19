@@ -1,0 +1,81 @@
+{
+  "@@locale": "en",
+  "captureHint": "What's on your mind?",
+  "@captureHint": {
+    "description": "Placeholder of the capture field, shown while it is empty."
+  },
+  "captureButton": "Note it",
+  "@captureButton": {
+    "description": "Tooltip and accessibility label of the button that saves the typed thought."
+  },
+  "emptyList": "What you note shows up here.",
+  "@emptyList": {
+    "description": "Shown in place of the list when no thought has been noted yet."
+  },
+  "saveFailed": "Couldn't save to this device. Retrying on your next change.",
+  "@saveFailed": {
+    "description": "Inline error shown when writing thoughts to disk failed."
+  },
+  "thoughtDeleted": "Thought deleted",
+  "@thoughtDeleted": {
+    "description": "Snackbar message after swiping a thought away."
+  },
+  "undo": "Undo",
+  "@undo": {
+    "description": "Snackbar action that brings back the thought just deleted."
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "Label revealed behind a thought while swiping it, and its accessibility action."
+  },
+  "editTitle": "Edit thought",
+  "@editTitle": {
+    "description": "Title of the dialog opened by tapping a thought."
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Closes the edit dialog without saving."
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Saves the edited thought and closes the dialog."
+  },
+  "justNow": "just now",
+  "@justNow": {
+    "description": "Age of a thought noted less than a minute ago."
+  },
+  "minutesAgo": "{count} min ago",
+  "@minutesAgo": {
+    "description": "Age of a thought noted less than an hour ago.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "12"
+      }
+    }
+  },
+  "hoursAgo": "{count} h ago",
+  "@hoursAgo": {
+    "description": "Age of a thought noted earlier today.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "yesterday": "yesterday",
+  "@yesterday": {
+    "description": "Age of a thought noted on the previous calendar day."
+  },
+  "daysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
+  "@daysAgo": {
+    "description": "Age of a thought noted 2 to 6 calendar days ago. Older thoughts show a date instead.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "4"
+      }
+    }
+  }
+}

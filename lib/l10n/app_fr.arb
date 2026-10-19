@@ -1,0 +1,18 @@
+{
+  "@@locale": "fr",
+  "captureHint": "Qu'est-ce que tu as en tête ?",
+  "captureButton": "Noter",
+  "emptyList": "Ce que tu notes s'affiche ici.",
+  "saveFailed": "Échec de l'enregistrement sur l'appareil. Nouvel essai à la prochaine modification.",
+  "thoughtDeleted": "Pensée effacée",
+  "undo": "Annuler",
+  "delete": "Effacer",
+  "editTitle": "Modifier la pensée",
+  "cancel": "Annuler",
+  "save": "Enregistrer",
+  "justNow": "à l'instant",
+  "minutesAgo": "il y a {count} min",
+  "hoursAgo": "il y a {count} h",
+  "yesterday": "hier",
+  "daysAgo": "{count, plural, =1{il y a 1 jour} other{il y a {count} jours}}"
+}

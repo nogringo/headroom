@@ -1,11 +1,11 @@
 {
-    "name": "headroom",
-    "short_name": "headroom",
+    "name": "Headroom",
+    "short_name": "Headroom",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#EAEFF3",
+    "theme_color": "#1D4E89",
+    "description": "Get a thought out of your head in seconds.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
