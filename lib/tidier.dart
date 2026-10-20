@@ -60,6 +60,14 @@ class Tidier extends ChangeNotifier {
   String? get failureMessage => _failureMessage;
   List<Suggestion> get suggestions => UnmodifiableListView(_suggestions);
 
+  /// Whether [thought] is waiting for a theme the AI is set to give it.
+  bool willSort(Thought thought) =>
+      _settings != null &&
+      _failure == null &&
+      thought.theme == null &&
+      thought.text.isNotEmpty &&
+      !_unsorted.contains(thought.id);
+
   Future<void> load() async {
     try {
       if (await _storage.readValue('ai') case final String json) {

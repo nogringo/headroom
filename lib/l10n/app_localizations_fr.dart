@@ -80,10 +80,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get imageNotCopied => 'Impossible de copier l\'image.';
 
   @override
-  String get byDay => 'Par jour';
-
-  @override
-  String get byTheme => 'Par thème';
+  String get allThoughts => 'Tout';
 
   @override
   String get noTheme => 'Sans thème';

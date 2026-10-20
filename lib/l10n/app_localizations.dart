@@ -236,19 +236,13 @@ abstract class AppLocalizations {
   /// **'Couldn\'t copy the image.'**
   String get imageNotCopied;
 
-  /// Shows the thoughts under the day they were noted.
+  /// Sidebar entry that lists every thought under the day it was noted.
   ///
   /// In en, this message translates to:
-  /// **'By day'**
-  String get byDay;
+  /// **'All'**
+  String get allThoughts;
 
-  /// Shows the thoughts under the theme the AI gave them.
-  ///
-  /// In en, this message translates to:
-  /// **'By theme'**
-  String get byTheme;
-
-  /// Heading above the thoughts the AI has not sorted yet, or that hold only images.
+  /// Sidebar entry for the thoughts the AI has not sorted, or that hold only images.
   ///
   /// In en, this message translates to:
   /// **'No theme'**

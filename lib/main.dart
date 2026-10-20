@@ -6,6 +6,7 @@ import 'capture_screen.dart';
 import 'file_thought_storage.dart'
     if (dart.library.js_interop) 'web_thought_storage.dart';
 import 'l10n/app_localizations.dart';
+import 'list_settings.dart';
 import 'theme.dart';
 import 'thought_store.dart';
 import 'tidier.dart';
@@ -19,14 +20,22 @@ Future<void> main() async {
   await store.load();
   final tidier = Tidier(store, storage);
   await tidier.load();
-  runApp(HeadroomApp(store: store, tidier: tidier));
+  final listSettings = ListSettings(storage);
+  await listSettings.load();
+  runApp(HeadroomApp(store: store, tidier: tidier, listSettings: listSettings));
 }
 
 class HeadroomApp extends StatelessWidget {
-  const HeadroomApp({super.key, required this.store, required this.tidier});
+  const HeadroomApp({
+    super.key,
+    required this.store,
+    required this.tidier,
+    required this.listSettings,
+  });
 
   final ThoughtStore store;
   final Tidier tidier;
+  final ListSettings listSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +46,11 @@ class HeadroomApp extends StatelessWidget {
       darkTheme: buildTheme(Brightness.dark),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: CaptureScreen(store: store, tidier: tidier),
+      home: CaptureScreen(
+        store: store,
+        tidier: tidier,
+        listSettings: listSettings,
+      ),
     );
   }
 }

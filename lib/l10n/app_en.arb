@@ -92,17 +92,13 @@
   "@imageNotCopied": {
     "description": "Shown in the full screen viewer when copying the image failed."
   },
-  "byDay": "By day",
-  "@byDay": {
-    "description": "Shows the thoughts under the day they were noted."
-  },
-  "byTheme": "By theme",
-  "@byTheme": {
-    "description": "Shows the thoughts under the theme the AI gave them."
+  "allThoughts": "All",
+  "@allThoughts": {
+    "description": "Sidebar entry that lists every thought under the day it was noted."
   },
   "noTheme": "No theme",
   "@noTheme": {
-    "description": "Heading above the thoughts the AI has not sorted yet, or that hold only images."
+    "description": "Sidebar entry for the thoughts the AI has not sorted, or that hold only images."
   },
   "tidySettings": "AI tidying",
   "@tidySettings": {

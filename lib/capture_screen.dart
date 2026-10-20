@@ -12,7 +12,9 @@ import 'clipboard_image_io.dart'
 import 'day_label.dart';
 import 'image_paste.dart';
 import 'l10n/app_localizations.dart';
+import 'list_settings.dart';
 import 'report_error.dart';
+import 'sidebar.dart';
 import 'theme.dart';
 import 'thought.dart';
 import 'thought_store.dart';
@@ -27,37 +29,28 @@ const _gutter = 12.0;
 /// From the note's edge to its text, which the thoughts line up with.
 const _inset = 20.0;
 
-/// A heading for [group] when [thought] is null, else a thought in it. The
-/// group is a day, or a theme: '' for the thoughts without one.
-typedef _Row = ({Object group, Thought? thought});
+/// From this window width, Material's expanded class, the sidebar stays open
+/// beside the list rather than in a drawer.
+const _wideWidth = 840.0;
 
-List<_Row> _rowsOf(List<Thought> thoughts, {required bool byTheme}) {
-  if (byTheme) {
-    // In order of each theme's newest thought.
-    final themes = <String, List<Thought>>{};
-    for (final thought in thoughts) {
-      (themes[thought.theme ?? ''] ??= []).add(thought);
-    }
-    return [
-      for (final MapEntry(key: theme, value: members) in themes.entries) ...[
-        (group: theme, thought: null),
-        for (final thought in members) (group: theme, thought: thought),
-      ],
-    ];
-  }
+const _sidebarWidth = 240.0;
+
+/// A heading for [day] when [thought] is null, else a thought noted that day.
+typedef _Row = ({DateTime day, Thought? thought});
+
+List<_Row> _rowsOf(Iterable<Thought> thoughts, {required bool withHeadings}) {
   final rows = <_Row>[];
   DateTime? previous;
   for (final thought in thoughts) {
     final day = DateUtils.dateOnly(thought.createdAt);
-    if (day != previous) rows.add((group: day, thought: null));
-    rows.add((group: day, thought: thought));
+    if (withHeadings && day != previous) rows.add((day: day, thought: null));
+    rows.add((day: day, thought: thought));
     previous = day;
   }
   return rows;
 }
 
-// A record, so a theme never collides with a thought's id.
-Object _keyOf(_Row row) => row.thought?.id ?? (heading: row.group);
+Object _keyOf(_Row row) => row.thought?.id ?? row.day;
 
 /// Touch keyboards have a single key, kept for sending. On the web, the
 /// platform is the browser's OS.
@@ -69,10 +62,16 @@ bool _shiftEnterBreaksLine(TargetPlatform platform) => switch (platform) {
 };
 
 class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({super.key, required this.store, required this.tidier});
+  const CaptureScreen({
+    super.key,
+    required this.store,
+    required this.tidier,
+    required this.listSettings,
+  });
 
   final ThoughtStore store;
   final Tidier tidier;
+  final ListSettings listSettings;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -82,6 +81,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   var _listKey = GlobalKey<SliverAnimatedListState>();
+  final _scaffold = GlobalKey<ScaffoldState>();
   final _scroll = ScrollController();
   late final AppLifecycleListener _lifecycle;
   late final Timer _clock;
@@ -89,16 +89,49 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// The images pasted into the field, waiting to be sent.
   var _attachments = <PastedImage>[];
 
-  var _byTheme = false;
+  /// Thoughts noted or edited in the open theme, kept in it until the AI
+  /// gives them theirs.
+  final _notedHere = <String>{};
 
   /// What the list shows, kept in step with the store by [_syncRows].
-  late var _rows = _rowsOf(_store.thoughts, byTheme: _byTheme);
+  late var _rows = _currentRows();
 
   /// Set while the thought swiped away is being removed.
   String? _swipedId;
 
   ThoughtStore get _store => widget.store;
   Tidier get _tidier => widget.tidier;
+  ListSettings get _listSettings => widget.listSettings;
+
+  /// Null for every thought, '' for those without a theme.
+  String? get _theme => _listSettings.theme;
+
+  List<_Row> _currentRows() {
+    final theme = _theme;
+    return _rowsOf(
+      theme == null
+          ? _store.thoughts
+          : _store.thoughts.where(
+              (t) =>
+                  (t.theme ?? '') == theme ||
+                  (t.theme == null && _notedHere.contains(t.id)),
+            ),
+      withHeadings: theme == null,
+    );
+  }
+
+  /// The themes the sidebar opens, '' for the thoughts that will get none.
+  /// Empty when there is no sidebar.
+  Set<String> _sidebarThemes() {
+    final theme = _theme;
+    final themes = {for (final t in _store.thoughts) ?t.theme, ?theme};
+    if (themes.isEmpty) return themes;
+    // Not the thoughts the AI is about to sort, which would make it flicker.
+    if (_store.thoughts.any((t) => t.theme == null && !_tidier.willSort(t))) {
+      themes.add('');
+    }
+    return themes;
+  }
 
   Duration get _motion => MediaQuery.disableAnimationsOf(context)
       ? Duration.zero
@@ -112,6 +145,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
     // Turns "Today" into "Yesterday" at midnight.
     _clock = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
     _store.addListener(_syncRows);
+    final theme = _theme;
+    if (theme != null &&
+        !_store.thoughts.any((t) => (t.theme ?? '') == theme)) {
+      _listSettings.theme = null;
+    }
   }
 
   @override
@@ -131,7 +169,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   void _capture() {
     final images = [for (final pasted in _attachments) pasted.name];
-    if (_store.add(_input.text, images: images) == null) return;
+    final thought = _store.add(_input.text, images: images);
+    if (thought == null) return;
+    // Its id is only known now, after the store has told the list.
+    _notedHere.add(thought.id);
+    _syncRows();
     _input.clear();
     setState(() => _attachments = []);
     _inputFocus.requestFocus();
@@ -163,7 +205,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// headings that appear grow in, those that go away collapse.
   void _syncRows() {
     final from = _rows;
-    final to = _rows = _rowsOf(_store.thoughts, byTheme: _byTheme);
+    final to = _rows = _currentRows();
     final list = _listKey.currentState;
     if (list == null) return;
     final kept = {for (final row in to) _keyOf(row)};
@@ -233,21 +275,27 @@ class _CaptureScreenState extends State<CaptureScreen> {
       );
   }
 
-  void _showByTheme(bool byTheme) {
-    if (byTheme == _byTheme) return;
+  /// Lists every thought when [theme] is null, else that theme's.
+  void _open(String? theme) {
+    _scaffold.currentState?.closeDrawer();
+    if (theme == _theme) return;
     setState(() {
-      _byTheme = byTheme;
-      _rows = _rowsOf(_store.thoughts, byTheme: byTheme);
+      _listSettings.theme = theme;
+      _notedHere.clear();
+      _rows = _currentRows();
       // A fresh list, rather than every row sliding to its new place.
       _listKey = GlobalKey();
     });
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
-  void _openTidySettings() => showDialog<void>(
-    context: context,
-    builder: (_) => AiSettingsDialog(tidier: _tidier),
-  );
+  void _openTidySettings() {
+    _scaffold.currentState?.closeDrawer();
+    showDialog<void>(
+      context: context,
+      builder: (_) => AiSettingsDialog(tidier: _tidier),
+    );
+  }
 
   Future<void> _edit(Thought thought) async {
     final edit = await showDialog<_Edit>(
@@ -259,6 +307,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
       ),
     );
     if (edit != null) {
+      // New text drops the theme, which would take it out of this one.
+      _notedHere.add(thought.id);
       _store.update(thought.id, text: edit.text, images: edit.images);
     }
   }
@@ -286,138 +336,171 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final attachments = _attachments;
     final shiftEnter = _shiftEnterBreaksLine(theme.platform);
 
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: _contentWidth),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    _gutter,
-                    _gutter,
-                    _gutter,
-                    8,
-                  ),
-                  child: _Note(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: ImagePaste(
-                                store: _store,
-                                focusNode: _inputFocus,
-                                onImage: (image) {
-                                  if (_attachments.any(
-                                    (pasted) => pasted.name == image.name,
-                                  )) {
-                                    _showError(l10n.imageAlreadyAdded);
-                                  } else {
-                                    setState(
-                                      () => _attachments = [
-                                        ..._attachments,
-                                        image,
-                                      ],
-                                    );
-                                  }
-                                },
-                                onError: _showError,
-                                builder: (contextMenuBuilder) => _SubmitOnEnter(
-                                  controller: _input,
-                                  onSubmit: _capture,
-                                  child: TextField(
-                                    controller: _input,
-                                    focusNode: _inputFocus,
-                                    autofocus: true,
-                                    minLines: 1,
-                                    maxLines: 5,
-                                    keyboardType: shiftEnter
-                                        ? TextInputType.multiline
-                                        : TextInputType.text,
-                                    textInputAction: shiftEnter
-                                        ? TextInputAction.newline
-                                        : TextInputAction.send,
-                                    textCapitalization:
-                                        TextCapitalization.sentences,
-                                    onEditingComplete: _capture,
-                                    contextMenuBuilder: contextMenuBuilder,
-                                    style: inputStyle,
-                                    decoration: InputDecoration(
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            vertical: 8,
-                                          ),
-                                      hintText: l10n.captureHint,
-                                      // The French hint wraps; short text should not keep its two lines.
-                                      maintainHintSize: false,
-                                      hintStyle: inputStyle?.copyWith(
-                                        color: scheme.onPrimaryContainer
-                                            .withValues(alpha: 0.6),
-                                      ),
-                                    ),
+    return ListenableBuilder(
+      listenable: Listenable.merge([_store, _tidier]),
+      builder: (context, note) => _buildLayout(context, note!),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _contentWidth),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(_gutter, _gutter, _gutter, 8),
+            child: _Note(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: ImagePaste(
+                          store: _store,
+                          focusNode: _inputFocus,
+                          onImage: (image) {
+                            if (_attachments.any(
+                              (pasted) => pasted.name == image.name,
+                            )) {
+                              _showError(l10n.imageAlreadyAdded);
+                            } else {
+                              setState(
+                                () => _attachments = [..._attachments, image],
+                              );
+                            }
+                          },
+                          onError: _showError,
+                          builder: (contextMenuBuilder) => _SubmitOnEnter(
+                            controller: _input,
+                            onSubmit: _capture,
+                            child: TextField(
+                              controller: _input,
+                              focusNode: _inputFocus,
+                              autofocus: true,
+                              minLines: 1,
+                              maxLines: 5,
+                              keyboardType: shiftEnter
+                                  ? TextInputType.multiline
+                                  : TextInputType.text,
+                              textInputAction: shiftEnter
+                                  ? TextInputAction.newline
+                                  : TextInputAction.send,
+                              textCapitalization: TextCapitalization.sentences,
+                              onEditingComplete: _capture,
+                              contextMenuBuilder: contextMenuBuilder,
+                              style: inputStyle,
+                              decoration: InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                                hintText: l10n.captureHint,
+                                // The French hint wraps; short text should not keep its two lines.
+                                maintainHintSize: false,
+                                hintStyle: inputStyle?.copyWith(
+                                  color: scheme.onPrimaryContainer.withValues(
+                                    alpha: 0.6,
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            ValueListenableBuilder(
-                              valueListenable: _input,
-                              builder: (context, value, _) => IconButton.filled(
-                                style: IconButton.styleFrom(
-                                  disabledBackgroundColor: scheme
-                                      .onPrimaryContainer
-                                      .withValues(alpha: 0.08),
-                                  disabledForegroundColor: scheme
-                                      .onPrimaryContainer
-                                      .withValues(alpha: 0.4),
-                                ),
-                                tooltip: l10n.captureButton,
-                                onPressed:
-                                    value.text.trim().isEmpty &&
-                                        attachments.isEmpty
-                                    ? null
-                                    : _capture,
-                                icon: const Icon(Icons.arrow_upward_rounded),
-                              ),
-                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      ValueListenableBuilder(
+                        valueListenable: _input,
+                        builder: (context, value, _) => IconButton.filled(
+                          style: IconButton.styleFrom(
+                            disabledBackgroundColor: scheme.onPrimaryContainer
+                                .withValues(alpha: 0.08),
+                            disabledForegroundColor: scheme.onPrimaryContainer
+                                .withValues(alpha: 0.4),
+                          ),
+                          tooltip: l10n.captureButton,
+                          onPressed:
+                              value.text.trim().isEmpty && attachments.isEmpty
+                              ? null
+                              : _capture,
+                          icon: const Icon(Icons.arrow_upward_rounded),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (attachments.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: _AttachmentsPreview(
+                        images: attachments,
+                        onRemove: (removed) => setState(
+                          () => _attachments = [
+                            for (final pasted in _attachments)
+                              if (pasted != removed) pasted,
                           ],
                         ),
-                        if (attachments.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: _AttachmentsPreview(
-                              images: attachments,
-                              onRemove: (removed) => setState(
-                                () => _attachments = [
-                                  for (final pasted in _attachments)
-                                    if (pasted != removed) pasted,
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Once the AI has given a theme, the sidebar sits beside [note] and the
+  /// list on a wide window, else in a drawer.
+  Widget _buildLayout(BuildContext context, Widget note) {
+    final themes = _sidebarThemes();
+    final wide = MediaQuery.sizeOf(context).width >= _wideWidth;
+    final sidebar = themes.isEmpty
+        ? null
+        : Sidebar(
+            themes: themes,
+            selected: _theme,
+            onSelect: _open,
+            tidying: _tidier.working,
+            onTidySettings: _openTidySettings,
+          );
+    return Scaffold(
+      key: _scaffold,
+      drawer: sidebar == null || wide
+          ? null
+          : Drawer(
+              width: 280,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadiusDirectional.horizontal(
+                  end: Radius.circular(6),
+                ),
+              ),
+              child: SafeArea(bottom: false, child: sidebar),
+            ),
+      body: SafeArea(
+        bottom: false,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (sidebar != null && wide)
+              Container(
+                width: _sidebarWidth,
+                decoration: BoxDecoration(
+                  border: BorderDirectional(
+                    end: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
                     ),
                   ),
                 ),
+                child: sidebar,
               ),
-            ),
-            ListenableBuilder(
-              listenable: Listenable.merge([_store, _tidier]),
-              builder: (context, _) => _buildToolbar(context),
-            ),
             Expanded(
-              child: ListenableBuilder(
-                listenable: Listenable.merge([_store, _tidier]),
-                builder: (context, _) => _buildList(context),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  note,
+                  if (sidebar == null || !wide)
+                    _buildToolbar(context, drawer: sidebar != null),
+                  Expanded(child: _buildList(context)),
+                ],
               ),
             ),
           ],
@@ -426,13 +509,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  Widget _buildToolbar(BuildContext context) {
+  /// Opens the drawer, or the AI's settings while there is no sidebar.
+  Widget _buildToolbar(BuildContext context, {required bool drawer}) {
     final l10n = AppLocalizations.of(context);
     final tidier = _tidier;
-    final showViews =
-        _byTheme ||
-        tidier.settings != null ||
-        _store.thoughts.any((t) => t.theme != null);
+    final theme = _theme;
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -441,32 +522,44 @@ class _CaptureScreenState extends State<CaptureScreen> {
           padding: const EdgeInsets.symmetric(horizontal: _gutter),
           child: Row(
             children: [
-              if (showViews)
-                SegmentedButton<bool>(
-                  segments: [
-                    ButtonSegment(value: false, label: Text(l10n.byDay)),
-                    ButtonSegment(value: true, label: Text(l10n.byTheme)),
-                  ],
-                  selected: {_byTheme},
-                  onSelectionChanged: (selected) =>
-                      _showByTheme(selected.single),
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              if (drawer)
+                Flexible(
+                  child: Tooltip(
+                    message: MaterialLocalizations.of(context)
+                        .openAppDrawerTooltip,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context)
+                            .colorScheme
+                            .onSurface,
+                      ),
+                      onPressed: () => _scaffold.currentState?.openDrawer(),
+                      icon: const Icon(Icons.menu_rounded),
+                      label: Text(
+                        switch (theme) {
+                          null => l10n.allThoughts,
+                          '' => l10n.noTheme,
+                          _ => theme,
+                        },
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
+                )
+              else ...[
+                const Spacer(),
+                IconButton(
+                  tooltip: tidier.working ? l10n.tidying : l10n.tidySettings,
+                  onPressed: _openTidySettings,
+                  icon: tidier.working
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cleaning_services_outlined),
                 ),
-              const Spacer(),
-              IconButton(
-                tooltip: tidier.working ? l10n.tidying : l10n.tidySettings,
-                onPressed: _openTidySettings,
-                icon: tidier.working
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cleaning_services_outlined),
-              ),
+              ],
             ],
           ),
         ),
@@ -477,7 +570,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Widget _buildList(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final suggestion = _tidier.suggestions.firstOrNull;
+    final shown = {
+      for (final row in _rows)
+        if (row.thought case final thought?) thought.id,
+    };
+    final suggestions = [
+      for (final s in _tidier.suggestions)
+        if (s.ids.any(shown.contains)) s,
+    ];
+    final suggestion = suggestions.firstOrNull;
     final tidyFailure = switch (_tidier.failure) {
       null => null,
       TidyFailure.unreachable => l10n.tidyUnreachable,
@@ -555,7 +656,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           sliver: SliverToBoxAdapter(
                             child: _CleanUpCard(
                               suggestion: suggestion,
-                              count: _tidier.suggestions.length,
+                              count: suggestions.length,
                               thoughts: {
                                 for (final t in _store.thoughts) t.id: t,
                               },
@@ -602,7 +703,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       child: FadeTransition(
         opacity: eased,
         child: thought == null
-            ? _Heading(group: row.group)
+            ? _Heading(day: row.day)
             : _buildThought(thought),
       ),
     );
@@ -629,7 +730,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             text: thought.text,
             images: _imagesOf(thought),
             createdAt: thought.createdAt,
-            withDay: _byTheme,
+            withDay: _theme != null,
             onTap: () => _edit(thought),
             onImageTap: (index) => _view(thought.images, index),
             onImageCopy: (index) => _copyImage(thought.images[index]),
@@ -658,27 +759,23 @@ class _Note extends StatelessWidget {
   );
 }
 
-/// Names a day, or a theme: '' for the thoughts without one.
+/// Names the day the thoughts below it were noted.
 class _Heading extends StatelessWidget {
-  const _Heading({required this.group});
+  const _Heading({required this.day});
 
-  final Object group;
+  final DateTime day;
 
   @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Padding(
-      padding: const EdgeInsetsDirectional.fromSTEB(_inset, 24, _inset, 0),
-      child: Semantics(
-        header: true,
-        child: Text(switch (group) {
-          final DateTime day => dayLabel(day, DateTime.now(), l10n),
-          '' => l10n.noTheme,
-          _ => '$group',
-        }, style: Theme.of(context).textTheme.titleSmall),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsetsDirectional.fromSTEB(_inset, 24, _inset, 0),
+    child: Semantics(
+      header: true,
+      child: Text(
+        dayLabel(day, DateTime.now(), AppLocalizations.of(context)),
+        style: Theme.of(context).textTheme.titleSmall,
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// Proposes the AI's first clean-up: merging thoughts, or deleting one that

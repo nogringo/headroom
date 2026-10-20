@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:headroom/list_settings.dart';
 import 'package:headroom/main.dart';
 import 'package:headroom/thought.dart';
 import 'package:headroom/thought_store.dart';
@@ -83,7 +85,11 @@ void main() {
       delay: Duration.zero,
     );
     await tidier.load();
-    await tester.pumpWidget(HeadroomApp(store: store, tidier: tidier));
+    final listSettings = ListSettings(storage);
+    await listSettings.load();
+    await tester.pumpWidget(
+      HeadroomApp(store: store, tidier: tidier, listSettings: listSettings),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -97,6 +103,11 @@ void main() {
   Finder listedImage() => find.descendant(
     of: find.byType(SliverAnimatedList),
     matching: find.byType(Image),
+  );
+
+  Finder listed(String text) => find.descendant(
+    of: find.byType(SliverAnimatedList),
+    matching: find.text(text),
   );
 
   Future<void> pressPaste(WidgetTester tester) async {
@@ -840,52 +851,179 @@ void main() {
     expect(find.text("Ce que tu notes s'affiche ici."), findsOneWidget);
   });
 
+  testWidgets('has no sidebar until a thought has a theme', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+    expect(find.byTooltip('Open navigation menu'), findsNothing);
+    expect(find.byTooltip('AI tidying'), findsOneWidget);
+  });
+
+  testWidgets('lists the thoughts the AI will not sort under No theme', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '2', text: 'Fix the build', createdAt: now, theme: 'Work'),
+      Thought(id: '1', text: 'Buy bread', createdAt: now),
+    ]);
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('No theme'));
+    await tester.pumpAndSettle();
+    expect(listed('Buy bread'), findsOneWidget);
+    expect(listed('Fix the build'), findsNothing);
+  });
+
+  testWidgets('opens on the theme it was left on, while it has thoughts', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '2', text: 'Fix the build', createdAt: now, theme: 'Work'),
+      Thought(id: '1', text: 'Buy bread', createdAt: now, theme: 'Errands'),
+    ]);
+    Future<void> reopen(String theme) async {
+      storage.values['list'] = jsonEncode({'theme': theme});
+      final listSettings = ListSettings(storage);
+      await listSettings.load();
+      await tester.pumpWidget(
+        HeadroomApp(
+          key: UniqueKey(),
+          store: store,
+          tidier: tidier,
+          listSettings: listSettings,
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await reopen('Work');
+    expect(listed('Fix the build'), findsOneWidget);
+    expect(listed('Buy bread'), findsNothing);
+
+    await reopen('Gone');
+    expect(find.text('All'), findsOneWidget);
+    expect(listed('Buy bread'), findsOneWidget);
+  });
+
   group('with an AI', () {
-    testWidgets('lists thoughts under the theme the AI gives them', (
+    testWidgets('a wide window lists one theme at a time from the sidebar', (
       tester,
     ) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       final now = DateTime.now();
       await pumpApp(
         tester,
         [
           Thought(
-            id: '2',
-            text: 'Call the garage',
+            id: '4',
+            text: 'Fix the build',
             createdAt: now,
-            theme: 'Car',
+            theme: 'Work',
           ),
+          Thought(id: '3', text: 'Buy milk', createdAt: now, theme: 'Errands'),
+          Thought(id: '2', text: 'milk!!', createdAt: now, theme: 'Errands'),
           Thought(
             id: '1',
-            text: 'Dentist on Monday',
+            text: 'Read Dune',
             createdAt: now.subtract(const Duration(days: 3)),
-            theme: 'Health',
+            theme: 'Études',
           ),
         ],
         const {},
-        (request) async => sortAllInto(request, 'Errands'),
+        (request) async => chatReply({
+          'themes': {},
+          'merges': [
+            {
+              'thoughts': [2, 3],
+              'text': 'Buy lots of milk',
+            },
+          ],
+        }),
       );
-
-      await tester.enterText(find.byType(TextField), 'Buy bread');
-      await tester.testTextInput.receiveAction(TextInputAction.send);
-      await tester.pumpAndSettle();
-      expect(store.thoughts.first.theme, 'Errands');
-
-      await tester.tap(find.text('By theme'));
-      await tester.pumpAndSettle();
-
       double top(String text) => tester.getTopLeft(find.text(text)).dy;
-      expect(find.text('Today'), findsNothing);
-      expect(top('Errands'), lessThan(top('Buy bread')));
-      expect(top('Buy bread'), lessThan(top('Car')));
-      expect(top('Car'), lessThan(top('Call the garage')));
-      expect(top('Call the garage'), lessThan(top('Health')));
-      expect(top('Health'), lessThan(top('Dentist on Monday')));
-
-      await tester.tap(find.text('By day'));
-      await tester.pumpAndSettle();
+      expect(find.byTooltip('Open navigation menu'), findsNothing);
+      expect(top('All'), lessThan(top('Errands')));
+      expect(top('Errands'), lessThan(top('Études')));
+      expect(top('Études'), lessThan(top('Work')));
       expect(find.text('Today'), findsOneWidget);
-      expect(find.text('Errands'), findsNothing);
+      expect(find.text('Clean-up'), findsOneWidget);
+
+      await tester.tap(find.text('Work'));
+      await tester.pumpAndSettle();
+      expect(listed('Fix the build'), findsOneWidget);
+      expect(listed('Buy milk'), findsNothing);
+      expect(listed('Read Dune'), findsNothing);
+      expect(find.text('Today'), findsNothing);
+      expect(find.text('Clean-up'), findsNothing);
+
+      await tester.tap(find.text('Errands'));
+      await tester.pumpAndSettle();
+      expect(listed('Buy milk'), findsOneWidget);
+      expect(listed('Fix the build'), findsNothing);
+      expect(find.text('Clean-up'), findsOneWidget);
+      final reopened = ListSettings(storage);
+      await reopened.load();
+      expect(reopened.theme, 'Errands');
+
+      await tester.tap(find.text('All'));
+      await tester.pumpAndSettle();
+      expect(listed('Fix the build'), findsOneWidget);
+      expect(listed('Read Dune'), findsOneWidget);
     });
+
+    testWidgets(
+      'a thought noted in a theme stays there until the AI sorts it',
+      (tester) async {
+        final now = DateTime.now();
+        final answer = Completer<void>();
+        var asked = 0;
+        await pumpApp(
+          tester,
+          [
+            Thought(
+              id: '2',
+              text: 'Fix the build',
+              createdAt: now,
+              theme: 'Work',
+            ),
+            Thought(
+              id: '1',
+              text: 'Buy bread',
+              createdAt: now,
+              theme: 'Errands',
+            ),
+          ],
+          const {},
+          (request) async {
+            if (asked++ > 0) await answer.future;
+            return sortAllInto(request, 'Errands');
+          },
+        );
+        expect(find.text('All'), findsOneWidget);
+        await tester.tap(find.byTooltip('Open navigation menu'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Work'));
+        await tester.pumpAndSettle();
+        expect(find.text('Work'), findsOneWidget);
+        expect(listed('Fix the build'), findsOneWidget);
+        expect(listed('Buy bread'), findsNothing);
+
+        await tester.enterText(find.byType(TextField), 'Buy milk');
+        await tester.testTextInput.receiveAction(TextInputAction.send);
+        await tester.pumpAndSettle();
+        expect(listed('Buy milk'), findsOneWidget);
+
+        answer.complete();
+        await tester.pumpAndSettle();
+        expect(store.thoughts.first.theme, 'Errands');
+        expect(listed('Buy milk'), findsNothing);
+        expect(listed('Fix the build'), findsOneWidget);
+      },
+    );
 
     testWidgets('merges the thoughts it finds repeated, until undone', (
       tester,
@@ -998,6 +1136,7 @@ void main() {
     });
 
     testWidgets('is set up from the broom button', (tester) async {
+      var sort = false;
       await pumpApp(
         tester,
         [Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now())],
@@ -1012,10 +1151,13 @@ void main() {
                 }),
                 200,
               )
-            : sortAllInto(request, 'Errands'),
+            : sort
+            ? sortAllInto(request, 'Errands')
+            : chatReply({'themes': {}}),
       );
       await tidier.configure(null);
       await tester.pumpAndSettle();
+      sort = true;
 
       await tester.tap(find.byTooltip('AI tidying'));
       await tester.pumpAndSettle();
@@ -1037,9 +1179,11 @@ void main() {
       expect(tidier.settings?.baseUrl, 'https://api.anthropic.com/v1');
       expect(tidier.settings?.apiKey, 'sk');
       expect(tidier.settings?.model, 'claude-haiku-5-5');
-      expect(find.text('By theme'), findsOneWidget);
+      expect(find.byTooltip('AI tidying'), findsNothing);
 
-      await tester.tap(find.byTooltip('AI tidying'));
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('AI tidying'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Turn off'));
       await tester.pumpAndSettle();
