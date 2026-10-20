@@ -849,6 +849,37 @@ class _CaptureScreenState extends State<CaptureScreen> {
             images: _imagesOf(thought),
             createdAt: thought.createdAt,
             withDay: _theme != null,
+            themeButton: switch (thought.theme) {
+              final theme? when _theme == null => _ThemeMenu(
+                theme: theme,
+                chosen: thought.themeChosen,
+                themes: _themes(),
+                aiSorts: _tidier.settings != null,
+                onChoose: (theme) => _store.chooseTheme(thought.id, theme),
+                // Else the tooltip ends up on the thought rather than here.
+                builder: (context, toggle) => MergeSemantics(
+                  child: Tooltip(
+                    message: l10n.changeTheme,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant,
+                        textStyle: Theme.of(context).textTheme.bodySmall,
+                        // Lines the label up with the text above.
+                        padding: const EdgeInsetsDirectional.only(end: 8),
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: toggle,
+                      icon: const Icon(Icons.label_outline_rounded, size: 14),
+                      label: Text(theme),
+                    ),
+                  ),
+                ),
+              ),
+              _ => null,
+            },
             onTap: () => _edit(thought),
             onImageTap: (index) => _view(thought.images, index),
             onImageCopy: (index) => _copyImage(thought.images[index]),
@@ -1001,6 +1032,7 @@ class _ThoughtTile extends StatefulWidget {
     required this.images,
     required this.createdAt,
     required this.withDay,
+    required this.themeButton,
     required this.onTap,
     required this.onImageTap,
     required this.onImageCopy,
@@ -1013,6 +1045,9 @@ class _ThoughtTile extends StatefulWidget {
 
   /// Shows the day it was noted rather than the time, unless that is today.
   final bool withDay;
+
+  /// Under the text and images.
+  final Widget? themeButton;
   final VoidCallback onTap;
   final ValueChanged<int> onImageTap;
   final ValueChanged<int> onImageCopy;
@@ -1111,6 +1146,13 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                                   ),
                               ],
                             ),
+                          ),
+                        if (widget.themeButton case final themeButton?)
+                          Padding(
+                            padding: EdgeInsets.only(
+                              top: images.isEmpty ? 2 : 8,
+                            ),
+                            child: themeButton,
                           ),
                       ],
                     ),
@@ -1806,7 +1848,7 @@ class _EditDialogState extends State<_EditDialog> {
               ),
             ),
           const SizedBox(height: 12),
-          _ThemeButton(
+          _ThemeMenu(
             theme: _theme,
             chosen: _themeChosen,
             themes: widget.themes,
@@ -1815,6 +1857,19 @@ class _EditDialogState extends State<_EditDialog> {
               _theme = theme;
               _themeChosen = theme != null;
             }),
+            builder: (context, toggle) => Tooltip(
+              message: l10n.theme,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: scheme.onPrimaryContainer,
+                  // Lines the label up with the text above.
+                  padding: const EdgeInsetsDirectional.fromSTEB(0, 8, 8, 8),
+                ),
+                onPressed: toggle,
+                icon: const Icon(Icons.label_outline_rounded, size: 18),
+                label: Text(_theme ?? l10n.chooseTheme),
+              ),
+            ),
           ),
         ],
       ),
@@ -1861,15 +1916,15 @@ class _EditDialogState extends State<_EditDialog> {
   }
 }
 
-/// Shows a thought's theme, and opens a menu to choose another, create one,
-/// or take the thought out of its theme.
-class _ThemeButton extends StatelessWidget {
-  const _ThemeButton({
+/// Opens a menu to put a thought in another theme, a new one, or none.
+class _ThemeMenu extends StatelessWidget {
+  const _ThemeMenu({
     required this.theme,
     required this.chosen,
     required this.themes,
     required this.aiSorts,
     required this.onChoose,
+    required this.builder,
   });
 
   final String? theme;
@@ -1882,6 +1937,9 @@ class _ThemeButton extends StatelessWidget {
   /// Null takes the thought out of its theme, for the AI to sort if any.
   final ValueChanged<String?> onChoose;
 
+  /// The button that opens and closes the menu with `toggle`.
+  final Widget Function(BuildContext context, VoidCallback toggle) builder;
+
   Future<void> _create(BuildContext context) async {
     final name = await showDialog<String>(
       context: context,
@@ -1892,7 +1950,6 @@ class _ThemeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     final theme = this.theme;
     final named = [
@@ -1924,19 +1981,9 @@ class _ThemeButton extends StatelessWidget {
             child: Text(aiSorts ? l10n.letAiChoose : l10n.noTheme),
           ),
       ],
-      builder: (context, controller, _) => Tooltip(
-        message: l10n.theme,
-        child: TextButton.icon(
-          style: TextButton.styleFrom(
-            foregroundColor: scheme.onPrimaryContainer,
-            // Lines the label up with the text above.
-            padding: const EdgeInsetsDirectional.fromSTEB(0, 8, 8, 8),
-          ),
-          onPressed: () =>
-              controller.isOpen ? controller.close() : controller.open(),
-          icon: const Icon(Icons.label_outline_rounded, size: 18),
-          label: Text(theme ?? l10n.chooseTheme),
-        ),
+      builder: (context, controller, _) => builder(
+        context,
+        () => controller.isOpen ? controller.close() : controller.open(),
       ),
     );
   }

@@ -100,6 +100,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get theme => 'Thème';
 
   @override
+  String get changeTheme => 'Changer de thème';
+
+  @override
   String get chooseTheme => 'Choisir un thème';
 
   @override

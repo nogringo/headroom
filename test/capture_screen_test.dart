@@ -10,6 +10,7 @@ import 'package:headroom/backup.dart';
 import 'package:headroom/clipboard_image_io.dart' show writeClipboardImage;
 import 'package:headroom/list_settings.dart';
 import 'package:headroom/main.dart';
+import 'package:headroom/sidebar.dart';
 import 'package:headroom/thought.dart';
 import 'package:headroom/thought_store.dart';
 import 'package:headroom/tidier.dart';
@@ -116,6 +117,14 @@ void main() {
     of: find.byType(SliverAnimatedList),
     matching: find.text(text),
   );
+
+  Finder inSidebar(String text) =>
+      find.descendant(of: find.byType(Sidebar), matching: find.text(text));
+
+  Finder inDialog(String text) =>
+      find.descendant(of: find.byType(AlertDialog), matching: find.text(text));
+
+  Finder menuItem(String text) => find.widgetWithText(MenuItemButton, text);
 
   Future<void> pressPaste(WidgetTester tester) async {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
@@ -1178,7 +1187,7 @@ void main() {
 
     await openMenu();
     expect(find.text('Let the AI choose'), findsNothing);
-    await tester.tap(find.text('Work'));
+    await tester.tap(menuItem('Work'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
@@ -1187,26 +1196,68 @@ void main() {
 
     await openMenu();
     await create('Bakery');
-    expect(find.text('Bakery'), findsOneWidget);
+    expect(inDialog('Bakery'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(bread().theme, 'Work');
 
     await openMenu();
     await create('errands');
-    expect(find.text('Errands'), findsOneWidget);
+    expect(inDialog('Errands'), findsOneWidget);
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(bread().theme, 'Errands');
 
     await openMenu();
-    await tester.tap(find.text('No theme'));
+    await tester.tap(menuItem('No theme'));
     await tester.pumpAndSettle();
     expect(find.text('Choose a theme'), findsOneWidget);
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(bread().theme, isNull);
     expect(bread().themeChosen, isFalse);
+  });
+
+  testWidgets('every thought shows its theme, which a tap corrects', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '3', text: 'Pay rent', createdAt: now),
+      Thought(id: '2', text: 'Fix the build', createdAt: now, theme: 'Work'),
+      Thought(id: '1', text: 'Buy bread', createdAt: now, theme: 'Errands'),
+    ]);
+    Finder themeOf(String theme) => find.descendant(
+      of: find.byType(SliverAnimatedList),
+      matching: find.widgetWithText(TextButton, theme),
+    );
+    expect(themeOf('Work'), findsOneWidget);
+    expect(themeOf('Errands'), findsOneWidget);
+    expect(find.byTooltip('Change theme'), findsNWidgets(2));
+    expect(
+      find.semantics.byPredicate((node) {
+        final merged = node.getSemanticsData();
+        return merged.label == 'Errands' && merged.tooltip == 'Change theme';
+      }),
+      findsOne,
+    );
+
+    await tester.tap(themeOf('Errands'));
+    await tester.pumpAndSettle();
+    await tester.tap(menuItem('Work'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(store.thoughts.last.theme, 'Work');
+    expect(store.thoughts.last.themeChosen, isTrue);
+    expect(themeOf('Work'), findsNWidgets(2));
+
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(inSidebar('Work'));
+    await tester.pumpAndSettle();
+    expect(listed('Buy bread'), findsOneWidget);
+    expect(find.byTooltip('Change theme'), findsNothing);
   });
 
   testWidgets('renames the open theme, or joins it to another', (tester) async {
@@ -1229,14 +1280,14 @@ void main() {
     }
 
     expect(find.byTooltip('Rename theme'), findsNothing);
-    await tester.tap(find.text('Errands'));
+    await tester.tap(inSidebar('Errands'));
     await tester.pumpAndSettle();
 
     await rename('Shopping');
     await tester.tap(find.text('Rename'));
     await tester.pumpAndSettle();
-    expect(find.text('Errands'), findsNothing);
-    expect(find.text('Shopping'), findsOneWidget);
+    expect(inSidebar('Errands'), findsNothing);
+    expect(inSidebar('Shopping'), findsOneWidget);
     expect(listed('Buy bread'), findsOneWidget);
     final reopened = ListSettings(storage);
     await reopened.load();
@@ -1249,7 +1300,7 @@ void main() {
     );
     await tester.tap(find.text('Rename'));
     await tester.pumpAndSettle();
-    expect(find.text('Shopping'), findsNothing);
+    expect(inSidebar('Shopping'), findsNothing);
     expect(listed('Buy bread'), findsOneWidget);
     expect(listed('Fix the build'), findsOneWidget);
     expect(store.thoughts.map((t) => t.theme), ['Work', 'Work']);
@@ -1275,12 +1326,12 @@ void main() {
           'Études',
           'Work',
           'Bills',
-        ].where((theme) => find.text(theme).evaluate().isNotEmpty);
+        ].where((theme) => inSidebar(theme).evaluate().isNotEmpty);
         return themes.toList()..sort(
           (a, b) => tester
-              .getTopLeft(find.text(a))
+              .getTopLeft(inSidebar(a))
               .dy
-              .compareTo(tester.getTopLeft(find.text(b)).dy),
+              .compareTo(tester.getTopLeft(inSidebar(b)).dy),
         );
       };
     }
@@ -1311,7 +1362,7 @@ void main() {
       expect(order(), ['Errands', 'Études', 'Work']);
 
       final mouse = await tester.startGesture(
-        tester.getCenter(find.text('Work')),
+        tester.getCenter(inSidebar('Work')),
         kind: PointerDeviceKind.mouse,
       );
       await drag(tester, mouse, -100);
@@ -1319,7 +1370,7 @@ void main() {
       expect(await savedOrder(), ['Work', 'Errands', 'Études']);
 
       final finger = await tester.startGesture(
-        tester.getCenter(find.text('Errands')),
+        tester.getCenter(inSidebar('Errands')),
       );
       await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
       await drag(tester, finger, 50);
@@ -1334,7 +1385,7 @@ void main() {
       await pumpThemes(tester);
 
       final mouse = await tester.startGesture(
-        tester.getCenter(find.text('Work')),
+        tester.getCenter(inSidebar('Work')),
         kind: PointerDeviceKind.mouse,
       );
       await mouse.moveBy(const Offset(0, 4));
@@ -1351,7 +1402,7 @@ void main() {
     ) async {
       await pumpThemes(tester);
 
-      Focus.of(tester.element(find.text('Errands'))).requestFocus();
+      Focus.of(tester.element(inSidebar('Errands'))).requestFocus();
       await tester.pump();
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
@@ -1359,12 +1410,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(order(), ['Études', 'Errands', 'Work']);
       expect(
-        Focus.of(tester.element(find.text('Errands'))).hasPrimaryFocus,
+        Focus.of(tester.element(inSidebar('Errands'))).hasPrimaryFocus,
         isTrue,
       );
 
       tester.semantics.customAction(
-        find.semantics.byLabel('Work'),
+        find.semantics.byPredicate(
+          (node) =>
+              node.label == 'Work' &&
+              node.getSemanticsData().hasAction(SemanticsAction.customAction),
+        ),
         const CustomSemanticsAction(label: 'Move up'),
       );
       await tester.pumpAndSettle();
@@ -1384,7 +1439,7 @@ void main() {
     testWidgets('a renamed theme keeps its place', (tester) async {
       await pumpThemes(tester);
       listSettings.themeOrder = ['Work', 'Errands', 'Études'];
-      await tester.tap(find.text('Errands'));
+      await tester.tap(inSidebar('Errands'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Rename theme'));
@@ -1438,7 +1493,7 @@ void main() {
           ],
         }),
       );
-      double top(String text) => tester.getTopLeft(find.text(text)).dy;
+      double top(String text) => tester.getTopLeft(inSidebar(text)).dy;
       expect(find.byTooltip('Open navigation menu'), findsNothing);
       expect(top('All'), lessThan(top('Errands')));
       expect(top('Errands'), lessThan(top('Études')));
@@ -1446,7 +1501,7 @@ void main() {
       expect(find.text('Today'), findsOneWidget);
       expect(find.text('Clean-up'), findsOneWidget);
 
-      await tester.tap(find.text('Work'));
+      await tester.tap(inSidebar('Work'));
       await tester.pumpAndSettle();
       expect(listed('Fix the build'), findsOneWidget);
       expect(listed('Buy milk'), findsNothing);
@@ -1454,7 +1509,7 @@ void main() {
       expect(find.text('Today'), findsNothing);
       expect(find.text('Clean-up'), findsNothing);
 
-      await tester.tap(find.text('Errands'));
+      await tester.tap(inSidebar('Errands'));
       await tester.pumpAndSettle();
       expect(listed('Buy milk'), findsOneWidget);
       expect(listed('Fix the build'), findsNothing);
@@ -1463,7 +1518,7 @@ void main() {
       await reopened.load();
       expect(reopened.theme, 'Errands');
 
-      await tester.tap(find.text('All'));
+      await tester.tap(inSidebar('All'));
       await tester.pumpAndSettle();
       expect(listed('Fix the build'), findsOneWidget);
       expect(listed('Read Dune'), findsOneWidget);
@@ -1500,7 +1555,7 @@ void main() {
         expect(find.text('All'), findsOneWidget);
         await tester.tap(find.byTooltip('Open navigation menu'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Work'));
+        await tester.tap(inSidebar('Work'));
         await tester.pumpAndSettle();
         expect(find.text('Work'), findsOneWidget);
         expect(listed('Fix the build'), findsOneWidget);

@@ -272,6 +272,12 @@ abstract class AppLocalizations {
   /// **'Theme'**
   String get theme;
 
+  /// Tooltip of the theme shown under a thought in the list of every thought, which opens a menu to change it.
+  ///
+  /// In en, this message translates to:
+  /// **'Change theme'**
+  String get changeTheme;
+
   /// Label of the edit dialog's theme button while the thought has no theme.
   ///
   /// In en, this message translates to:
