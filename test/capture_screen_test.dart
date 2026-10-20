@@ -165,6 +165,51 @@ void main() {
     expect(storage.saved.single.text, 'Call the garage');
   });
 
+  testWidgets('a screen reader hears that the thought was noted', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await tester.enterText(find.byType(TextField), 'Call the garage');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeAnnouncements(), [
+      isAccessibilityAnnouncement('Thought noted'),
+    ]);
+  });
+
+  testWidgets('the field keeps its label once it holds text', (tester) async {
+    await pumpApp(tester);
+
+    await tester.enterText(find.byType(TextField), 'Buy bread');
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSemantics(find.byType(EditableText)),
+      isSemantics(label: 'Thought', value: 'Buy bread'),
+    );
+  });
+
+  testWidgets('a failed save is read out', (tester) async {
+    await pumpApp(tester);
+    storage.failWrites = true;
+
+    await tester.enterText(find.byType(TextField), 'Buy bread');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isStateError);
+    expect(
+      tester.getSemantics(
+        find.text(
+          "Couldn't save to this device. Retrying on your next change.",
+        ),
+      ),
+      isSemantics(isLiveRegion: true),
+    );
+  });
+
   testWidgets('the send button is disabled until there is text', (
     tester,
   ) async {
@@ -226,6 +271,23 @@ void main() {
 
     expect(captureField(tester).textInputAction, TextInputAction.send);
   }, variant: TargetPlatformVariant.mobile());
+
+  testWidgets('large text with the keyboard up fits a landscape phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(667, 375);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 200);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pumpApp(tester);
+
+    await tester.enterText(find.byType(TextField), 'word ' * 40);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('swiping deletes a thought and undo brings it back', (
     tester,
@@ -383,6 +445,35 @@ void main() {
     expect(store.thoughts, isEmpty);
   }, variant: TargetPlatformVariant.desktop());
 
+  testWidgets('a touch where the delete button hides opens the thought', (
+    tester,
+  ) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    await tester.tapAt(tester.getCenter(find.byTooltip('Delete')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(store.thoughts, hasLength(1));
+  }, variant: TargetPlatformVariant.desktop());
+
+  testWidgets('a screen reader reaches the hidden delete button', (
+    tester,
+  ) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    tester.semantics.tap(
+      find.semantics.byPredicate((node) => node.tooltip == 'Delete'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(store.thoughts, isEmpty);
+  }, variant: TargetPlatformVariant.desktop());
+
   testWidgets('touch screens rely on the swipe, without a delete button', (
     tester,
   ) async {
@@ -509,6 +600,10 @@ void main() {
         matching: find.text('No image in the clipboard.'),
       ),
       findsOneWidget,
+    );
+    expect(
+      tester.getSemantics(find.text('No image in the clipboard.')),
+      isSemantics(isLiveRegion: true),
     );
     expect(find.byType(SnackBar), findsNothing);
   });
@@ -829,9 +924,19 @@ void main() {
         .page!
         .round();
 
+    expect(find.bySemanticsLabel('Image 1 of 2'), findsOneWidget);
+    expect(find.bySemanticsLabel('Image 2 of 2'), findsOneWidget);
+
     await tester.tap(listedImage().last);
     await tester.pumpAndSettle();
     expect(page(), 1);
+    expect(
+      find.descendant(
+        of: find.byType(PageView),
+        matching: find.bySemanticsLabel('Image 2 of 2'),
+      ),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Next image'), findsNothing);
 
     await tester.tap(find.byTooltip('Previous image'));
@@ -1164,6 +1269,10 @@ void main() {
           "Tidying paused: the AI service's limit or credit is used up.";
       expect(find.text(error), findsOneWidget);
       expect(find.text('Insufficient balance.'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.text(error)),
+        isSemantics(isLiveRegion: true),
+      );
 
       refuse = false;
       await tester.tap(find.text('Retry'));

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import 'backup.dart';
@@ -33,6 +34,9 @@ Future<void> main() async {
       backup: backup,
     ),
   );
+  // Otherwise screen readers see nothing until they find Flutter's hidden
+  // "Enable accessibility" button.
+  if (kIsWeb) SemanticsBinding.instance.ensureSemantics();
 }
 
 class HeadroomApp extends StatelessWidget {

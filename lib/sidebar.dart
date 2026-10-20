@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'focus_ring.dart';
 import 'l10n/app_localizations.dart';
 import 'theme.dart';
 
@@ -110,35 +111,38 @@ class _Entry extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      child: Material(
-        color: selected ? scheme.outlineVariant : Colors.transparent,
-        borderRadius: paperRadius,
-        child: InkWell(
+      child: FocusRing(
+        builder: (onFocusChange) => Material(
+          color: selected ? scheme.outlineVariant : Colors.transparent,
           borderRadius: paperRadius,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                if (leading != null) ...[
-                  IconTheme.merge(
-                    data: IconThemeData(color: color, size: 18),
-                    child: leading,
-                  ),
-                  const SizedBox(width: 12),
-                ],
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: color,
-                      fontWeight: selected ? FontWeight.w600 : null,
+          child: InkWell(
+            borderRadius: paperRadius,
+            onTap: onTap,
+            onFocusChange: onFocusChange,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  if (leading != null) ...[
+                    IconTheme.merge(
+                      data: IconThemeData(color: color, size: 18),
+                      child: leading,
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: color,
+                        fontWeight: selected ? FontWeight.w600 : null,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

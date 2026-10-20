@@ -110,6 +110,18 @@ abstract class AppLocalizations {
   /// **'Note it'**
   String get captureButton;
 
+  /// Accessibility label of the capture field and of the edit dialog's field, read before what they hold.
+  ///
+  /// In en, this message translates to:
+  /// **'Thought'**
+  String get thoughtField;
+
+  /// Announced to screen readers once the typed thought is saved, since the field only empties.
+  ///
+  /// In en, this message translates to:
+  /// **'Thought noted'**
+  String get thoughtNoted;
+
   /// Shown in place of the list when no thought has been noted yet.
   ///
   /// In en, this message translates to:
@@ -199,6 +211,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Image'**
   String get imageLabel;
+
+  /// Accessibility label of one of a thought's images when it has several.
+  ///
+  /// In en, this message translates to:
+  /// **'Image {index} of {count}'**
+  String imagePosition(int index, int count);
 
   /// Button of the full screen viewer that shows the thought's previous image.
   ///

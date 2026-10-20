@@ -8,6 +8,14 @@
   "@captureButton": {
     "description": "Tooltip and accessibility label of the button that saves the typed thought."
   },
+  "thoughtField": "Thought",
+  "@thoughtField": {
+    "description": "Accessibility label of the capture field and of the edit dialog's field, read before what they hold."
+  },
+  "thoughtNoted": "Thought noted",
+  "@thoughtNoted": {
+    "description": "Announced to screen readers once the typed thought is saved, since the field only empties."
+  },
   "emptyList": "What you note shows up here.",
   "@emptyList": {
     "description": "Shown in place of the list when no thought has been noted yet."
@@ -67,6 +75,18 @@
   "imageLabel": "Image",
   "@imageLabel": {
     "description": "Accessibility label of a thought's image. Tapping it shows the image full screen."
+  },
+  "imagePosition": "Image {index} of {count}",
+  "@imagePosition": {
+    "description": "Accessibility label of one of a thought's images when it has several.",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "previousImage": "Previous image",
   "@previousImage": {

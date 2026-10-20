@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import 'ai_settings_dialog.dart';
@@ -12,6 +12,7 @@ import 'backup_dialog.dart';
 import 'clipboard_image_io.dart'
     if (dart.library.js_interop) 'clipboard_image_web.dart';
 import 'day_label.dart';
+import 'focus_ring.dart';
 import 'image_paste.dart';
 import 'l10n/app_localizations.dart';
 import 'list_settings.dart';
@@ -39,6 +40,9 @@ const _sidebarWidth = 240.0;
 
 /// A heading for [day] when [thought] is null, else a thought noted that day.
 typedef _Row = ({DateTime day, Thought? thought});
+
+String _imageLabel(AppLocalizations l10n, int index, int count) =>
+    count == 1 ? l10n.imageLabel : l10n.imagePosition(index + 1, count);
 
 List<_Row> _rowsOf(Iterable<Thought> thoughts, {required bool withHeadings}) {
   final rows = <_Row>[];
@@ -189,6 +193,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
       }
     }
     HapticFeedback.lightImpact();
+    if (MediaQuery.supportsAnnounceOf(context)) {
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        AppLocalizations.of(context).thoughtNoted,
+        Directionality.of(context),
+      );
+    }
   }
 
   void _showError(String message) => ScaffoldMessenger.of(context)
@@ -383,34 +394,39 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           builder: (contextMenuBuilder) => _SubmitOnEnter(
                             controller: _input,
                             onSubmit: _capture,
-                            child: TextField(
-                              controller: _input,
-                              focusNode: _inputFocus,
-                              autofocus: true,
-                              minLines: 1,
-                              maxLines: 5,
-                              keyboardType: shiftEnter
-                                  ? TextInputType.multiline
-                                  : TextInputType.text,
-                              textInputAction: shiftEnter
-                                  ? TextInputAction.newline
-                                  : TextInputAction.send,
-                              textCapitalization: TextCapitalization.sentences,
-                              onEditingComplete: _capture,
-                              contextMenuBuilder: contextMenuBuilder,
-                              style: inputStyle,
-                              decoration: InputDecoration(
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 8,
-                                ),
-                                hintText: l10n.captureHint,
-                                // The French hint wraps; short text should not keep its two lines.
-                                maintainHintSize: false,
-                                hintStyle: inputStyle?.copyWith(
-                                  color: scheme.onPrimaryContainer.withValues(
-                                    alpha: 0.6,
+                            // The hint goes away once there is text.
+                            child: Semantics(
+                              label: l10n.thoughtField,
+                              child: TextField(
+                                controller: _input,
+                                focusNode: _inputFocus,
+                                autofocus: true,
+                                minLines: 1,
+                                maxLines: 5,
+                                keyboardType: shiftEnter
+                                    ? TextInputType.multiline
+                                    : TextInputType.text,
+                                textInputAction: shiftEnter
+                                    ? TextInputAction.newline
+                                    : TextInputAction.send,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                onEditingComplete: _capture,
+                                contextMenuBuilder: contextMenuBuilder,
+                                style: inputStyle,
+                                decoration: InputDecoration(
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  hintText: l10n.captureHint,
+                                  // The French hint wraps; short text should not keep its two lines.
+                                  maintainHintSize: false,
+                                  hintStyle: inputStyle?.copyWith(
+                                    color: scheme.onPrimaryContainer.withValues(
+                                      alpha: 0.6,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -506,14 +522,32 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 child: sidebar,
               ),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  note,
-                  if (sidebar == null || !wide)
-                    _buildToolbar(context, drawer: sidebar != null),
-                  Expanded(child: _buildList(context)),
-                ],
+              child: LayoutBuilder(
+                builder: (context, constraints) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Up to three quarters of the height, past which large
+                    // text with the keyboard up scrolls rather than hiding
+                    // the list.
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: constraints.maxHeight * 0.75,
+                      ),
+                      child: SingleChildScrollView(
+                        primary: false,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            note,
+                            if (sidebar == null || !wide)
+                              _buildToolbar(context, drawer: sidebar != null),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(child: _buildList(context)),
+                  ],
+                ),
               ),
             ),
           ],
@@ -623,7 +657,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
             if (_store.saveFailed)
               Padding(
                 padding: inset.copyWith(top: 12),
-                child: Text(l10n.saveFailed, style: errorStyle),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(l10n.saveFailed, style: errorStyle),
+                ),
               ),
             if (tidyFailure != null)
               Padding(
@@ -631,18 +668,21 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(tidyFailure, style: errorStyle),
-                          if (_tidier.failureMessage case final message?)
-                            Text(
-                              message,
-                              style: theme.textTheme.bodySmall,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
+                      child: Semantics(
+                        liveRegion: true,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(tidyFailure, style: errorStyle),
+                            if (_tidier.failureMessage case final message?)
+                              Text(
+                                message,
+                                style: theme.textTheme.bodySmall,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                     TextButton(
@@ -957,92 +997,107 @@ class _ThoughtTileState extends State<_ThoughtTile> {
         };
     final revealed = _hovered || _focused;
     const fade = Duration(milliseconds: 120);
-    // Opaque so the swipe background only shows where the tile has slid away.
-    return Material(
-      color: theme.colorScheme.surface,
-      borderRadius: paperRadius,
-      child: Focus(
-        canRequestFocus: false,
-        skipTraversal: true,
-        onFocusChange: (focused) => setState(() => _focused = focused),
-        child: InkWell(
-          borderRadius: paperRadius,
-          onTap: widget.onTap,
-          onHover: (hovered) => setState(() => _hovered = hovered),
-          child: Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              _inset,
-              10,
-              deleteButton ? 6 : _inset,
-              10,
-            ),
-            child: Row(
-              // The time sits on the first line of text, or at the top of an image.
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (text.isNotEmpty)
-                        Text(text, style: theme.textTheme.bodyLarge),
-                      if (images.isNotEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(top: text.isEmpty ? 2 : 10),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              for (final (index, image) in images.indexed)
-                                _ImageThumbnail(
-                                  image: image,
-                                  maxHeight: images.length == 1 ? 160 : 112,
-                                  onTap: () => widget.onImageTap(index),
-                                  onCopy: () => widget.onImageCopy(index),
-                                ),
-                            ],
+    return FocusRing(
+      // Opaque so the swipe background only shows where the tile has slid away.
+      builder: (onFocusChange) => Material(
+        color: theme.colorScheme.surface,
+        borderRadius: paperRadius,
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onFocusChange: (focused) => setState(() => _focused = focused),
+          child: InkWell(
+            borderRadius: paperRadius,
+            onTap: widget.onTap,
+            onHover: (hovered) => setState(() => _hovered = hovered),
+            onFocusChange: onFocusChange,
+            child: Padding(
+              padding: EdgeInsetsDirectional.fromSTEB(
+                _inset,
+                10,
+                deleteButton ? 6 : _inset,
+                10,
+              ),
+              child: Row(
+                // The time sits on the first line of text, or at the top of an image.
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (text.isNotEmpty)
+                          Text(text, style: theme.textTheme.bodyLarge),
+                        if (images.isNotEmpty)
+                          Padding(
+                            padding: EdgeInsets.only(
+                              top: text.isEmpty ? 2 : 10,
+                            ),
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final (index, image) in images.indexed)
+                                  _ImageThumbnail(
+                                    image: image,
+                                    label: _imageLabel(
+                                      AppLocalizations.of(context),
+                                      index,
+                                      images.length,
+                                    ),
+                                    maxHeight: images.length == 1 ? 160 : 112,
+                                    onTap: () => widget.onImageTap(index),
+                                    onCopy: () => widget.onImageCopy(index),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                if (deleteButton)
-                  Stack(
-                    alignment: AlignmentDirectional.centerEnd,
-                    children: [
-                      AnimatedOpacity(
-                        opacity: revealed ? 0 : 1,
-                        duration: fade,
-                        child: Padding(
-                          padding: const EdgeInsetsDirectional.only(
-                            end: _inset - 6,
+                  const SizedBox(width: 16),
+                  if (deleteButton)
+                    Stack(
+                      alignment: AlignmentDirectional.centerEnd,
+                      children: [
+                        AnimatedOpacity(
+                          opacity: revealed ? 0 : 1,
+                          duration: fade,
+                          child: Padding(
+                            padding: const EdgeInsetsDirectional.only(
+                              end: _inset - 6,
+                            ),
+                            child: time,
                           ),
-                          child: time,
                         ),
-                      ),
-                      AnimatedOpacity(
-                        opacity: revealed ? 1 : 0,
-                        duration: fade,
-                        alwaysIncludeSemantics: true,
-                        child: IconButton(
-                          constraints: const BoxConstraints.tightFor(
-                            width: 32,
-                            height: 28,
+                        // A touch screen has no hover: a touch on the hidden
+                        // button opens the thought, as anywhere else on it.
+                        _PointerGate(
+                          open: revealed,
+                          child: AnimatedOpacity(
+                            opacity: revealed ? 1 : 0,
+                            duration: fade,
+                            alwaysIncludeSemantics: true,
+                            child: IconButton(
+                              constraints: const BoxConstraints.tightFor(
+                                width: 32,
+                                height: 28,
+                              ),
+                              padding: EdgeInsets.zero,
+                              iconSize: 18,
+                              tooltip: AppLocalizations.of(context).delete,
+                              onPressed: widget.onDelete,
+                              icon: const Icon(Icons.delete_outline_rounded),
+                            ),
                           ),
-                          padding: EdgeInsets.zero,
-                          iconSize: 18,
-                          tooltip: AppLocalizations.of(context).delete,
-                          onPressed: widget.onDelete,
-                          icon: const Icon(Icons.delete_outline_rounded),
                         ),
-                      ),
-                    ],
-                  )
-                else
-                  time,
-              ],
+                      ],
+                    )
+                  else
+                    time,
+                ],
+              ),
             ),
           ),
         ),
@@ -1051,15 +1106,45 @@ class _ThoughtTileState extends State<_ThoughtTile> {
   }
 }
 
+/// Lets pointers through to what lies beneath while closed. Unlike
+/// [IgnorePointer], it leaves a screen reader free to press its child.
+class _PointerGate extends SingleChildRenderObjectWidget {
+  const _PointerGate({required this.open, super.child});
+
+  final bool open;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderPointerGate(open);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderPointerGate renderObject,
+  ) => renderObject.open = open;
+}
+
+class _RenderPointerGate extends RenderProxyBox {
+  _RenderPointerGate(this.open);
+
+  bool open;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) =>
+      open && super.hitTest(result, position: position);
+}
+
 class _ImageThumbnail extends StatelessWidget {
   const _ImageThumbnail({
     required this.image,
+    required this.label,
     required this.maxHeight,
     this.onTap,
     this.onCopy,
   });
 
   final ImageProvider image;
+  final String label;
   final double maxHeight;
   final VoidCallback? onTap;
 
@@ -1071,7 +1156,7 @@ class _ImageThumbnail extends StatelessWidget {
     final decodedHeight = (maxHeight * MediaQuery.devicePixelRatioOf(context))
         .round();
     return Semantics(
-      label: AppLocalizations.of(context).imageLabel,
+      label: label,
       image: true,
       // A max height rather than a fixed one keeps the box to the image's
       // proportions when the width runs short, so the corners stay on it.
@@ -1163,13 +1248,13 @@ class _AttachmentsPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final removeImage = AppLocalizations.of(context).removeImage;
+    final l10n = AppLocalizations.of(context);
     final onNote = Theme.of(context).colorScheme.onPrimaryContainer;
     return Wrap(
       spacing: 12,
       runSpacing: 12,
       children: [
-        for (final pasted in images)
+        for (final (index, pasted) in images.indexed)
           // Beside the image rather than over it: its width is 0 until decoded.
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -1178,6 +1263,7 @@ class _AttachmentsPreview extends StatelessWidget {
               Flexible(
                 child: _ImageThumbnail(
                   image: pasted.image,
+                  label: _imageLabel(l10n, index, images.length),
                   maxHeight: maxHeight,
                 ),
               ),
@@ -1189,7 +1275,7 @@ class _AttachmentsPreview extends StatelessWidget {
                 ),
                 visualDensity: VisualDensity.compact,
                 iconSize: 16,
-                tooltip: removeImage,
+                tooltip: l10n.removeImage,
                 onPressed: () => onRemove(pasted),
                 icon: const Icon(Icons.close_rounded),
               ),
@@ -1333,6 +1419,7 @@ class _ImageViewerState extends State<_ImageViewer> {
                       onCopy: _copy,
                       child: _ZoomableImage(
                         image: widget.store.imageNamed(widget.names[index]),
+                        label: _imageLabel(l10n, index, count),
                         onZoomChanged: (zoomed) =>
                             setState(() => _zoomed = zoomed),
                       ),
@@ -1393,9 +1480,14 @@ class _ImageViewerState extends State<_ImageViewer> {
 }
 
 class _ZoomableImage extends StatefulWidget {
-  const _ZoomableImage({required this.image, required this.onZoomChanged});
+  const _ZoomableImage({
+    required this.image,
+    required this.label,
+    required this.onZoomChanged,
+  });
 
   final ImageProvider image;
+  final String label;
   final ValueChanged<bool> onZoomChanged;
 
   @override
@@ -1427,10 +1519,7 @@ class _ZoomableImageState extends State<_ZoomableImage> {
   Widget build(BuildContext context) => InteractiveViewer(
     transformationController: _transform,
     maxScale: 6,
-    child: Image(
-      image: widget.image,
-      semanticLabel: AppLocalizations.of(context).imageLabel,
-    ),
+    child: Image(image: widget.image, semanticLabel: widget.label),
   );
 }
 
@@ -1442,7 +1531,7 @@ class _SwipeBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = theme.colorScheme.onSurfaceVariant;
+    final color = theme.colorScheme.onSurface;
     return ColoredBox(
       color: theme.colorScheme.outlineVariant,
       child: Align(
@@ -1596,29 +1685,32 @@ class _EditDialogState extends State<_EditDialog> {
             builder: (contextMenuBuilder) => _SubmitOnEnter(
               controller: _controller,
               onSubmit: _save,
-              child: TextField(
-                controller: _controller,
-                focusNode: _focus,
-                autofocus: true,
-                minLines: 1,
-                maxLines: 8,
-                keyboardType: shiftEnter
-                    ? TextInputType.multiline
-                    : TextInputType.text,
-                textInputAction: shiftEnter
-                    ? TextInputAction.newline
-                    : TextInputAction.done,
-                textCapitalization: TextCapitalization.sentences,
-                onEditingComplete: _save,
-                contextMenuBuilder: contextMenuBuilder,
-                style: theme.textTheme.displaySmall?.copyWith(
-                  fontSize: 22,
-                  color: scheme.onPrimaryContainer,
-                ),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 4),
+              child: Semantics(
+                label: l10n.thoughtField,
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focus,
+                  autofocus: true,
+                  minLines: 1,
+                  maxLines: 8,
+                  keyboardType: shiftEnter
+                      ? TextInputType.multiline
+                      : TextInputType.text,
+                  textInputAction: shiftEnter
+                      ? TextInputAction.newline
+                      : TextInputAction.done,
+                  textCapitalization: TextCapitalization.sentences,
+                  onEditingComplete: _save,
+                  contextMenuBuilder: contextMenuBuilder,
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontSize: 22,
+                    color: scheme.onPrimaryContainer,
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 4),
+                  ),
                 ),
               ),
             ),
@@ -1627,10 +1719,13 @@ class _EditDialogState extends State<_EditDialog> {
           if (error != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                error,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
+              child: Semantics(
+                liveRegion: true,
+                child: Text(
+                  error,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
                 ),
               ),
             ),

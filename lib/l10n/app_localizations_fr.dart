@@ -16,6 +16,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get captureButton => 'Noter';
 
   @override
+  String get thoughtField => 'Pensée';
+
+  @override
+  String get thoughtNoted => 'Pensée notée';
+
+  @override
   String get emptyList => 'Ce que tu notes s\'affiche ici.';
 
   @override
@@ -60,6 +66,11 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get imageLabel => 'Image';
+
+  @override
+  String imagePosition(int index, int count) {
+    return 'Image $index sur $count';
+  }
 
   @override
   String get previousImage => 'Image précédente';
