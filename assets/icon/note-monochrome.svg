@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <mask id="ink">
+    <g transform="rotate(-7 512 512)">
+      <path d="M254 232H770A22 22 0 0 1 792 254V640L640 792H254A22 22 0 0 1 232 770V254A22 22 0 0 1 254 232Z" fill="#fff"/>
+      <path d="M792 640L640 792L666 666Z" fill="#888"/>
+      <path d="M322 392C430 372 560 396 690 378M322 508C410 492 500 510 588 498" fill="none" stroke="#000" stroke-width="36" stroke-linecap="round"/>
+    </g>
+  </mask>
+  <rect width="1024" height="1024" fill="#fff" mask="url(#ink)"/>
+</svg>

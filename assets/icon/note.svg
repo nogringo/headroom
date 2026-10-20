@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <g transform="rotate(-7 512 512)">
+    <path d="M254 232H770A22 22 0 0 1 792 254V640L640 792H254A22 22 0 0 1 232 770V254A22 22 0 0 1 254 232Z" fill="#000" fill-opacity=".35" transform="translate(8 22)"/>
+    <path d="M254 232H770A22 22 0 0 1 792 254V640L640 792H254A22 22 0 0 1 232 770V254A22 22 0 0 1 254 232Z" fill="#FFE04D"/>
+    <path d="M792 640L640 792L666 666Z" fill="#D9B52C"/>
+    <path d="M322 392C430 372 560 396 690 378M322 508C410 492 500 510 588 498" fill="none" stroke="#1D1D1B" stroke-width="36" stroke-linecap="round"/>
+  </g>
+</svg>
