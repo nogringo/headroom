@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:headroom/backup.dart';
+import 'package:headroom/clipboard_image_io.dart' show writeClipboardImage;
 import 'package:headroom/list_settings.dart';
 import 'package:headroom/main.dart';
 import 'package:headroom/thought.dart';
@@ -45,18 +46,15 @@ void main() {
     copiedImage = null;
     copyFails = false;
     final messenger = tester.binding.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(const MethodChannel('pasteboard'), (
-      call,
-    ) async {
-      switch (call.method) {
-        case 'image':
-          return clipboardImage;
-        case 'writeImage':
-          if (copyFails) throw PlatformException(code: 'denied');
-          copiedImage = call.arguments as Uint8List;
-      }
-      return null;
-    });
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('pasteboard'),
+      (call) async => call.method == 'image' ? clipboardImage : null,
+    );
+    final realWriteClipboardImage = writeClipboardImage;
+    writeClipboardImage = (image) async {
+      if (copyFails) throw PlatformException(code: 'denied');
+      copiedImage = image;
+    };
     messenger.setMockMethodCallHandler(
       SystemChannels.platform,
       (call) async => switch (call.method) {
@@ -73,6 +71,7 @@ void main() {
         null,
       );
       messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+      writeClipboardImage = realWriteClipboardImage;
     });
 
     storage = InMemoryStorage(initial)..images.addAll(images);

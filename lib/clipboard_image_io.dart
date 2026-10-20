@@ -13,5 +13,11 @@ VoidCallback listenToPastedImages({
 /// The pasteboard plugin cannot write images on Linux.
 bool get canCopyImages => defaultTargetPlatform != TargetPlatform.linux;
 
+/// Tests replace this: the plugin picks its code path from the host OS, so
+/// on a Linux CI runner it would never reach a mocked channel.
+@visibleForTesting
+Future<void> Function(Uint8List image) writeClipboardImage =
+    Pasteboard.writeImage;
+
 Future<void> copyImage(Future<Uint8List> bytes) async =>
-    Pasteboard.writeImage(await bytes);
+    writeClipboardImage(await bytes);
