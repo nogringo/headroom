@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:headroom/backup.dart';
 import 'package:headroom/list_settings.dart';
 import 'package:headroom/main.dart';
 import 'package:headroom/thought.dart';
@@ -88,7 +89,12 @@ void main() {
     final listSettings = ListSettings(storage);
     await listSettings.load();
     await tester.pumpWidget(
-      HeadroomApp(store: store, tidier: tidier, listSettings: listSettings),
+      HeadroomApp(
+        store: store,
+        tidier: tidier,
+        listSettings: listSettings,
+        backup: Backup(store, tidier, storage),
+      ),
     );
     await tester.pumpAndSettle();
   }
@@ -859,6 +865,38 @@ void main() {
     expect(find.byTooltip('AI tidying'), findsOneWidget);
   });
 
+  testWidgets('opens the backup from the toolbar, even with no thought', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tester.tap(find.byTooltip('Backup'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No copy saved yet'), findsOneWidget);
+    expect(find.text('Restore a copy'), findsOneWidget);
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Restore a copy'), findsNothing);
+  });
+
+  testWidgets('opens the backup from the sidebar', (tester) async {
+    await pumpApp(tester, [
+      Thought(
+        id: '1',
+        text: 'Buy bread',
+        createdAt: DateTime.now(),
+        theme: 'Errands',
+      ),
+    ]);
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Backup'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Save a copy'), findsOneWidget);
+  });
+
   testWidgets('lists the thoughts the AI will not sort under No theme', (
     tester,
   ) async {
@@ -893,6 +931,7 @@ void main() {
           store: store,
           tidier: tidier,
           listSettings: listSettings,
+          backup: Backup(store, tidier, storage),
         ),
       );
       await tester.pumpAndSettle();

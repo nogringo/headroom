@@ -179,4 +179,65 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get thoughtsMerged => 'Pensées fusionnées';
+
+  @override
+  String get backup => 'Sauvegarde';
+
+  @override
+  String get backupIntro =>
+      'Une copie de tes pensées et de leurs images, à ranger où tu veux, sur un cloud ou une clé USB. La clé API de l\'IA n\'y est pas.';
+
+  @override
+  String get noBackupYet => 'Aucune copie pour l\'instant';
+
+  @override
+  String lastBackup(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: 'Dernière copie il y a $days jours',
+      one: 'Dernière copie hier',
+      zero: 'Dernière copie aujourd\'hui',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get saveBackup => 'Enregistrer une copie';
+
+  @override
+  String get restoreBackup => 'Restaurer une copie';
+
+  @override
+  String get restoreHelp =>
+      'Restaurer ajoute les pensées qui manquent ici, sans rien effacer.';
+
+  @override
+  String restored(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pensées restaurées.',
+      one: '1 pensée restaurée.',
+      zero: 'Rien de nouveau : tout était déjà là.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get aiRestored =>
+      'Le rangement par IA est rétabli. Saisis à nouveau ta clé API s\'il en faut une.';
+
+  @override
+  String get backupNotSaved => 'Impossible d\'enregistrer la copie.';
+
+  @override
+  String get notABackup =>
+      'Ce fichier n\'est pas une copie de Headroom, ou il est abîmé.';
+
+  @override
+  String get restoreFailed => 'Impossible de restaurer la copie.';
+
+  @override
+  String get close => 'Fermer';
 }

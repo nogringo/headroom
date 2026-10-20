@@ -146,6 +146,23 @@ class ThoughtStore extends ChangeNotifier {
     return index;
   }
 
+  /// Adds the [thoughts] whose id isn't in the list, each in its place by
+  /// date. Returns how many it added.
+  int addMissing(Iterable<Thought> thoughts) {
+    final ids = {for (final t in _thoughts) t.id};
+    var added = 0;
+    for (final thought in thoughts) {
+      if (!ids.add(thought.id)) continue;
+      final older = _thoughts.indexWhere(
+        (t) => t.createdAt.isBefore(thought.createdAt),
+      );
+      _thoughts.insert(older == -1 ? _thoughts.length : older, thought);
+      added++;
+    }
+    if (added > 0) _changed();
+    return added;
+  }
+
   /// Returns the index the thought was put back at.
   int restore(Thought thought, int index) {
     final at = index.clamp(0, _thoughts.length);

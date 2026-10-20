@@ -212,5 +212,67 @@
   "thoughtsMerged": "Thoughts merged",
   "@thoughtsMerged": {
     "description": "Snackbar message after merging thoughts, with an undo action."
+  },
+  "backup": "Backup",
+  "@backup": {
+    "description": "Sidebar entry and tooltip of the button that opens the backup dialog, and that dialog's title."
+  },
+  "backupIntro": "A copy of your thoughts and their images, to keep wherever you like, on a cloud drive or a USB stick. Your AI's API key stays out of it.",
+  "@backupIntro": {
+    "description": "First paragraph of the backup dialog."
+  },
+  "noBackupYet": "No copy saved yet",
+  "@noBackupYet": {
+    "description": "Shown in the backup dialog before any copy was saved from this device."
+  },
+  "lastBackup": "{days, plural, =0{Last copy saved today} =1{Last copy saved yesterday} other{Last copy saved {days} days ago}}",
+  "@lastBackup": {
+    "description": "How long ago a copy was last saved from this device, in calendar days.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "saveBackup": "Save a copy",
+  "@saveBackup": {
+    "description": "Button of the backup dialog that saves a zip of every thought where the person picks."
+  },
+  "restoreBackup": "Restore a copy",
+  "@restoreBackup": {
+    "description": "Button of the backup dialog that opens a saved copy and adds back what it holds."
+  },
+  "restoreHelp": "Restoring adds the thoughts missing here, and deletes nothing.",
+  "@restoreHelp": {
+    "description": "Under the restore button: a restore merges, it never replaces."
+  },
+  "restored": "{count, plural, =0{Nothing new: every thought was already here.} =1{1 thought restored.} other{{count} thoughts restored.}}",
+  "@restored": {
+    "description": "Shown in the backup dialog after a restore.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRestored": "AI tidying is set up again. Enter your API key in it again if the service needs one.",
+  "@aiRestored": {
+    "description": "Added after a restore that set up the AI. Backups never hold the API key."
+  },
+  "backupNotSaved": "Couldn't save the copy.",
+  "@backupNotSaved": {
+    "description": "Error in the backup dialog when making or writing the copy failed."
+  },
+  "notABackup": "This file isn't a Headroom copy, or it's damaged.",
+  "@notABackup": {
+    "description": "Error in the backup dialog when the file picked for a restore can't be read as a backup."
+  },
+  "restoreFailed": "Couldn't restore the copy.",
+  "@restoreFailed": {
+    "description": "Error in the backup dialog when a readable copy could not be written to this device."
+  },
+  "close": "Close",
+  "@close": {
+    "description": "Closes the backup dialog."
   }
 }

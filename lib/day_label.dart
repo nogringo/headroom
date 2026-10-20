@@ -2,14 +2,18 @@ import 'package:intl/intl.dart';
 
 import 'l10n/app_localizations.dart';
 
+/// Calendar days from [day] to [now].
+int daysBetween(DateTime day, DateTime now) =>
+    // UTC dates so a DST change never turns one calendar day into 23 hours.
+    DateTime.utc(
+      now.year,
+      now.month,
+      now.day,
+    ).difference(DateTime.utc(day.year, day.month, day.day)).inDays;
+
 /// The heading above the thoughts noted on [day].
 String dayLabel(DateTime day, DateTime now, AppLocalizations l10n) {
-  // UTC dates so a DST change never turns one calendar day into 23 hours.
-  final days = DateTime.utc(
-    now.year,
-    now.month,
-    now.day,
-  ).difference(DateTime.utc(day.year, day.month, day.day)).inDays;
+  final days = daysBetween(day, now);
   if (days == 0) return l10n.today;
   if (days == 1) return l10n.yesterday;
 

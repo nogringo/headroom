@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'backup.dart';
 import 'capture_screen.dart';
 import 'file_thought_storage.dart'
     if (dart.library.js_interop) 'web_thought_storage.dart';
@@ -22,7 +23,16 @@ Future<void> main() async {
   await tidier.load();
   final listSettings = ListSettings(storage);
   await listSettings.load();
-  runApp(HeadroomApp(store: store, tidier: tidier, listSettings: listSettings));
+  final backup = Backup(store, tidier, storage);
+  await backup.load();
+  runApp(
+    HeadroomApp(
+      store: store,
+      tidier: tidier,
+      listSettings: listSettings,
+      backup: backup,
+    ),
+  );
 }
 
 class HeadroomApp extends StatelessWidget {
@@ -31,11 +41,13 @@ class HeadroomApp extends StatelessWidget {
     required this.store,
     required this.tidier,
     required this.listSettings,
+    required this.backup,
   });
 
   final ThoughtStore store;
   final Tidier tidier;
   final ListSettings listSettings;
+  final Backup backup;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +62,7 @@ class HeadroomApp extends StatelessWidget {
         store: store,
         tidier: tidier,
         listSettings: listSettings,
+        backup: backup,
       ),
     );
   }

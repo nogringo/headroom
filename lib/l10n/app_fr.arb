@@ -51,5 +51,18 @@
   "merge": "Fusionner",
   "outdatedIntro": "Cette pensée semble dépassée\u00a0:",
   "keep": "Garder",
-  "thoughtsMerged": "Pensées fusionnées"
+  "thoughtsMerged": "Pensées fusionnées",
+  "backup": "Sauvegarde",
+  "backupIntro": "Une copie de tes pensées et de leurs images, à ranger où tu veux, sur un cloud ou une clé USB. La clé API de l'IA n'y est pas.",
+  "noBackupYet": "Aucune copie pour l'instant",
+  "lastBackup": "{days, plural, =0{Dernière copie aujourd'hui} =1{Dernière copie hier} other{Dernière copie il y a {days}\u00a0jours}}",
+  "saveBackup": "Enregistrer une copie",
+  "restoreBackup": "Restaurer une copie",
+  "restoreHelp": "Restaurer ajoute les pensées qui manquent ici, sans rien effacer.",
+  "restored": "{count, plural, =0{Rien de nouveau\u00a0: tout était déjà là.} =1{1 pensée restaurée.} other{{count}\u00a0pensées restaurées.}}",
+  "aiRestored": "Le rangement par IA est rétabli. Saisis à nouveau ta clé API s'il en faut une.",
+  "backupNotSaved": "Impossible d'enregistrer la copie.",
+  "notABackup": "Ce fichier n'est pas une copie de Headroom, ou il est abîmé.",
+  "restoreFailed": "Impossible de restaurer la copie.",
+  "close": "Fermer"
 }

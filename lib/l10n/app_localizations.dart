@@ -409,6 +409,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Thoughts merged'**
   String get thoughtsMerged;
+
+  /// Sidebar entry and tooltip of the button that opens the backup dialog, and that dialog's title.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup'**
+  String get backup;
+
+  /// First paragraph of the backup dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'A copy of your thoughts and their images, to keep wherever you like, on a cloud drive or a USB stick. Your AI\'s API key stays out of it.'**
+  String get backupIntro;
+
+  /// Shown in the backup dialog before any copy was saved from this device.
+  ///
+  /// In en, this message translates to:
+  /// **'No copy saved yet'**
+  String get noBackupYet;
+
+  /// How long ago a copy was last saved from this device, in calendar days.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =0{Last copy saved today} =1{Last copy saved yesterday} other{Last copy saved {days} days ago}}'**
+  String lastBackup(int days);
+
+  /// Button of the backup dialog that saves a zip of every thought where the person picks.
+  ///
+  /// In en, this message translates to:
+  /// **'Save a copy'**
+  String get saveBackup;
+
+  /// Button of the backup dialog that opens a saved copy and adds back what it holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore a copy'**
+  String get restoreBackup;
+
+  /// Under the restore button: a restore merges, it never replaces.
+  ///
+  /// In en, this message translates to:
+  /// **'Restoring adds the thoughts missing here, and deletes nothing.'**
+  String get restoreHelp;
+
+  /// Shown in the backup dialog after a restore.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Nothing new: every thought was already here.} =1{1 thought restored.} other{{count} thoughts restored.}}'**
+  String restored(int count);
+
+  /// Added after a restore that set up the AI. Backups never hold the API key.
+  ///
+  /// In en, this message translates to:
+  /// **'AI tidying is set up again. Enter your API key in it again if the service needs one.'**
+  String get aiRestored;
+
+  /// Error in the backup dialog when making or writing the copy failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the copy.'**
+  String get backupNotSaved;
+
+  /// Error in the backup dialog when the file picked for a restore can't be read as a backup.
+  ///
+  /// In en, this message translates to:
+  /// **'This file isn\'t a Headroom copy, or it\'s damaged.'**
+  String get notABackup;
+
+  /// Error in the backup dialog when a readable copy could not be written to this device.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t restore the copy.'**
+  String get restoreFailed;
+
+  /// Closes the backup dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get close;
 }
 
 class _AppLocalizationsDelegate

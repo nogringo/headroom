@@ -7,6 +7,8 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import 'ai_settings_dialog.dart';
+import 'backup.dart';
+import 'backup_dialog.dart';
 import 'clipboard_image_io.dart'
     if (dart.library.js_interop) 'clipboard_image_web.dart';
 import 'day_label.dart';
@@ -67,11 +69,13 @@ class CaptureScreen extends StatefulWidget {
     required this.store,
     required this.tidier,
     required this.listSettings,
+    required this.backup,
   });
 
   final ThoughtStore store;
   final Tidier tidier;
   final ListSettings listSettings;
+  final Backup backup;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -297,6 +301,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
+  void _openBackup() {
+    _scaffold.currentState?.closeDrawer();
+    showDialog<void>(
+      context: context,
+      builder: (_) => BackupDialog(backup: widget.backup),
+    );
+  }
+
   Future<void> _edit(Thought thought) async {
     final edit = await showDialog<_Edit>(
       context: context,
@@ -459,6 +471,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             themes: themes,
             selected: _theme,
             onSelect: _open,
+            onBackup: _openBackup,
             tidying: _tidier.working,
             onTidySettings: _openTidySettings,
           );
@@ -509,7 +522,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  /// Opens the drawer, or the AI's settings while there is no sidebar.
+  /// Opens the drawer, or the backup and the AI's settings while there is no
+  /// sidebar.
   Widget _buildToolbar(BuildContext context, {required bool drawer}) {
     final l10n = AppLocalizations.of(context);
     final tidier = _tidier;
@@ -549,6 +563,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 )
               else ...[
                 const Spacer(),
+                IconButton(
+                  tooltip: l10n.backup,
+                  onPressed: _openBackup,
+                  icon: const Icon(Icons.backup_outlined),
+                ),
                 IconButton(
                   tooltip: tidier.working ? l10n.tidying : l10n.tidySettings,
                   onPressed: _openTidySettings,

@@ -3,13 +3,15 @@ import 'package:flutter/material.dart';
 import 'l10n/app_localizations.dart';
 import 'theme.dart';
 
-/// Opens every thought or a single theme's, with the AI's settings below.
+/// Opens every thought or a single theme's, with the backup and the AI's
+/// settings below.
 class Sidebar extends StatelessWidget {
   const Sidebar({
     super.key,
     required this.themes,
     required this.selected,
     required this.onSelect,
+    required this.onBackup,
     required this.tidying,
     required this.onTidySettings,
   });
@@ -20,6 +22,7 @@ class Sidebar extends StatelessWidget {
   /// Null for every thought.
   final String? selected;
   final ValueChanged<String?> onSelect;
+  final VoidCallback onBackup;
   final bool tidying;
   final VoidCallback onTidySettings;
 
@@ -58,15 +61,25 @@ class Sidebar extends StatelessWidget {
             12,
             12 + MediaQuery.paddingOf(context).bottom,
           ),
-          child: _Entry(
-            leading: tidying
-                ? const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.cleaning_services_outlined),
-            label: tidying ? l10n.tidying : l10n.tidySettings,
-            onTap: onTidySettings,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Entry(
+                leading: const Icon(Icons.backup_outlined),
+                label: l10n.backup,
+                onTap: onBackup,
+              ),
+              _Entry(
+                leading: tidying
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cleaning_services_outlined),
+                label: tidying ? l10n.tidying : l10n.tidySettings,
+                onTap: onTidySettings,
+              ),
+            ],
           ),
         ),
       ],

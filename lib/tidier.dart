@@ -59,6 +59,7 @@ class Tidier extends ChangeNotifier {
   /// What the service said about the [failure], when it said something.
   String? get failureMessage => _failureMessage;
   List<Suggestion> get suggestions => UnmodifiableListView(_suggestions);
+  List<Suggestion> get declined => UnmodifiableListView(_declined);
 
   /// Whether [thought] is waiting for a theme the AI is set to give it.
   bool willSort(Thought thought) =>
@@ -112,6 +113,23 @@ class Tidier extends ChangeNotifier {
     } catch (error, stack) {
       reportError(error, stack);
     }
+  }
+
+  /// Takes a backup's AI unless one is set up here, and the clean-ups it
+  /// declined. Returns whether it took the AI.
+  Future<bool> restore(AiSettings? settings, List<Suggestion> declined) async {
+    _declined.addAll([
+      for (final suggestion in declined)
+        if (!_declined.any((d) => d.covers(suggestion))) suggestion,
+    ]);
+    _suggestions.removeWhere((s) => _declined.any((d) => d.covers(s)));
+    if (settings != null && _settings == null) {
+      await configure(settings);
+      return true;
+    }
+    notifyListeners();
+    await _saveState();
+    return false;
   }
 
   Future<List<String>> models(AiSettings settings) => _client.models(settings);

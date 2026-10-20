@@ -178,4 +178,65 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get thoughtsMerged => 'Thoughts merged';
+
+  @override
+  String get backup => 'Backup';
+
+  @override
+  String get backupIntro =>
+      'A copy of your thoughts and their images, to keep wherever you like, on a cloud drive or a USB stick. Your AI\'s API key stays out of it.';
+
+  @override
+  String get noBackupYet => 'No copy saved yet';
+
+  @override
+  String lastBackup(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: 'Last copy saved $days days ago',
+      one: 'Last copy saved yesterday',
+      zero: 'Last copy saved today',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get saveBackup => 'Save a copy';
+
+  @override
+  String get restoreBackup => 'Restore a copy';
+
+  @override
+  String get restoreHelp =>
+      'Restoring adds the thoughts missing here, and deletes nothing.';
+
+  @override
+  String restored(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count thoughts restored.',
+      one: '1 thought restored.',
+      zero: 'Nothing new: every thought was already here.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get aiRestored =>
+      'AI tidying is set up again. Enter your API key in it again if the service needs one.';
+
+  @override
+  String get backupNotSaved => 'Couldn\'t save the copy.';
+
+  @override
+  String get notABackup =>
+      'This file isn\'t a Headroom copy, or it\'s damaged.';
+
+  @override
+  String get restoreFailed => 'Couldn\'t restore the copy.';
+
+  @override
+  String get close => 'Close';
 }
