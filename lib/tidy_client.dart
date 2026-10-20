@@ -138,6 +138,7 @@ class TidyClient {
             'noted': day.format(thought.createdAt),
             'text': thought.text,
             'theme': ?thought.theme,
+            if (thought.themeChosen) 'byOwner': true,
           },
       ],
     };
@@ -288,11 +289,11 @@ Tidied _read(String content, List<String> ids, Set<String> toSort) {
 }
 
 const _instructions = '''
-You keep a personal list of quick notes tidy. Its owner jots thoughts down in a hurry to get them out of their head: errands, ideas, reminders, things to remember. You receive the whole list as JSON. Each thought has a number, the day it was noted, its text, and its theme when it already has one.
+You keep a personal list of quick notes tidy. Its owner jots thoughts down in a hurry to get them out of their head: errands, ideas, reminders, things to remember. You receive the whole list as JSON. Each thought has a number, the day it was noted, its text, and its theme when it already has one. A theme marked "byOwner" was chosen by the owner, often to correct yours: those show how the owner wants the list sorted.
 
 Do three things.
 
-1. Give a theme to each thought numbered in "toSort". Reuse an existing theme whenever one fits. Create a new theme only for a subject none of them covers, and name it so it can hold future thoughts too: one to three words, in the language the thoughts are written in, starting with a capital letter. A list usually needs a handful of themes, not one per thought.
+1. Give a theme to each thought numbered in "toSort". Sort it the way the owner sorted similar thoughts. Reuse an existing theme whenever one fits. Create a new theme only for a subject none of them covers, and name it so it can hold future thoughts too: one to three words, in the language the thoughts are written in, starting with a capital letter. A list usually needs a handful of themes, not one per thought.
 
 2. Find thoughts that repeat each other or say nearly the same thing. For each such group, write the one thought that would replace them: keep every detail from each, in the owner's words and language, about as short as the originals. Thoughts that merely share a subject are not repeats.
 

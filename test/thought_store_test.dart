@@ -102,6 +102,45 @@ void main() {
       expect(store.thoughts.single.theme, isNull);
     });
 
+    test('keeps a chosen theme, even through new text and the AI', () {
+      final thought = store.add('Buy bread')!;
+      store.chooseTheme(thought.id, 'Bakery');
+
+      store.setThemes({thought.id: 'Errands'});
+      store.update(thought.id, text: 'Bake bread', images: []);
+      expect(store.thoughts.single.theme, 'Bakery');
+      expect(store.thoughts.single.themeChosen, isTrue);
+
+      store.chooseTheme(thought.id, null);
+      expect(store.thoughts.single.theme, isNull);
+      expect(store.thoughts.single.themeChosen, isFalse);
+      store.setThemes({thought.id: 'Errands'});
+      expect(store.thoughts.single.theme, 'Errands');
+    });
+
+    test('renames a theme, which may join another', () async {
+      store
+        ..add('Fix the build')
+        ..add('Buy milk')
+        ..add('Buy bread');
+      final [bread, milk, build] = store.thoughts;
+      store
+        ..setThemes({bread.id: 'Errands', build.id: 'Work'})
+        ..chooseTheme(milk.id, 'Errands');
+
+      store.renameTheme('Errands', 'Shopping');
+      expect(store.thoughts.map((t) => t.theme), [
+        'Shopping',
+        'Shopping',
+        'Work',
+      ]);
+      expect(store.thoughts.map((t) => t.themeChosen), [false, true, false]);
+
+      store.renameTheme('Shopping', 'Work');
+      await store.flush();
+      expect(storage.saved.map((t) => t.theme), ['Work', 'Work', 'Work']);
+    });
+
     test('merges thoughts into the newest and unmerges them', () async {
       store
         ..add('milk', images: ['carton'])

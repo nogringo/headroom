@@ -9,7 +9,7 @@ Headroom is a sticky note for the things that clutter your mind: errands, ideas,
 - **Write and move on.** Type on the note and press Enter. On a computer, Shift+Enter starts a new line. Thoughts are listed under the day they were noted: Today, Yesterday, then the weekday and date.
 - **Images.** Paste one or several images into a thought with Cmd/Ctrl+V, or with "Paste image" in the field's menu. Tap an image to see it full screen, go through a thought's images with the arrow keys, and copy one back out with Cmd/Ctrl+C, a right-click or a long press.
 - **Edit and delete.** Tap a thought to edit it. Swipe it away on a touch screen, or use the delete button that shows on hover on a computer. Undo brings it back.
-- **Themes.** With AI tidying on, each new thought gets a theme, and a sidebar opens one theme at a time so the rest of the list stays out of sight. The app reopens on the theme you left.
+- **Themes.** With AI tidying on, each new thought gets a theme, and a sidebar opens one theme at a time so the rest of the list stays out of sight. The app reopens on the theme you left. When the AI files a thought in the wrong place, pick its theme yourself in the edit dialog: the AI leaves it there and sorts similar thoughts the same way. The pencil beside the open theme renames it, and giving it another theme's name merges the two. Themes work without the AI too.
 - **Clean-up suggestions.** The AI spots thoughts that repeat each other and writes the one that would replace them, and flags thoughts that are out of date, such as an appointment whose day has passed. Nothing changes until you accept, and a declined suggestion is not offered again.
 - **Backup.** Save a copy of every thought and image as a zip, wherever you like, and restore it on any device. A restore adds the thoughts that are missing and deletes nothing.
 - **In English and French.**
@@ -50,7 +50,7 @@ Images are named after a SHA-256 of their content, so the same image pasted twic
 
 A backup is a zip named `headroom-YYYY-MM-DD.zip`, laid out like the storage:
 
-- `thoughts.json`: every thought, with its text, images, date and theme.
+- `thoughts.json`: every thought, with its text, images, date and theme, and whether you chose that theme.
 - `images/`: the images, with an extension so they open from the unzipped copy.
 - `ai.json`: the AI's address and model. Never the API key, which has no place in a file left on a cloud drive.
 - `tidy.json`: the clean-ups you declined.

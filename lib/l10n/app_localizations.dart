@@ -260,11 +260,71 @@ abstract class AppLocalizations {
   /// **'All'**
   String get allThoughts;
 
-  /// Sidebar entry for the thoughts the AI has not sorted, or that hold only images.
+  /// Sidebar entry for the thoughts without a theme. Also the edit dialog's theme menu item that takes a thought out of its theme, while no AI is set up.
   ///
   /// In en, this message translates to:
   /// **'No theme'**
   String get noTheme;
+
+  /// Tooltip of the edit dialog's button that shows the thought's theme and opens a menu to change it.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get theme;
+
+  /// Label of the edit dialog's theme button while the thought has no theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a theme'**
+  String get chooseTheme;
+
+  /// Item of the edit dialog's theme menu that asks for the name of a theme to create.
+  ///
+  /// In en, this message translates to:
+  /// **'New theme...'**
+  String get newThemeItem;
+
+  /// Item of the edit dialog's theme menu that hands a theme the person chose back to the AI, which then sorts the thought itself.
+  ///
+  /// In en, this message translates to:
+  /// **'Let the AI choose'**
+  String get letAiChoose;
+
+  /// Title of the dialog that asks for a new theme's name.
+  ///
+  /// In en, this message translates to:
+  /// **'New theme'**
+  String get newTheme;
+
+  /// Tooltip of the sidebar button beside the open theme, and title of the dialog it opens.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename theme'**
+  String get renameTheme;
+
+  /// Label of the field that holds a theme's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme name'**
+  String get themeName;
+
+  /// Shown under the field while renaming a theme to the name of another, which merges the two.
+  ///
+  /// In en, this message translates to:
+  /// **'Its thoughts will join {theme}, which already exists.'**
+  String themesJoin(String theme);
+
+  /// Confirms a theme's new name.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get rename;
+
+  /// Confirms a new theme's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get create;
 
   /// Tooltip of the button that sets up the AI, and title of its dialog.
   ///

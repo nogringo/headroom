@@ -91,6 +91,38 @@ void main() {
     expect(store.thoughts.single.theme, 'Food');
   });
 
+  test('leaves alone a theme chosen while it was sorting', () async {
+    await start([]);
+    reply = (request) async {
+      store.chooseTheme(store.thoughts.single.id, 'Bakery');
+      return sortAllInto(request, 'Errands');
+    };
+
+    store.add('Buy bread');
+    await pumpEventQueue();
+
+    expect(store.thoughts.single.theme, 'Bakery');
+  });
+
+  test('does not ask about a chosen theme after an edit', () async {
+    await start([
+      Thought(
+        id: '1',
+        text: 'Buy bread',
+        createdAt: DateTime.now(),
+        theme: 'Bakery',
+        themeChosen: true,
+      ),
+    ]);
+    expect(sentList(requests.single).toSort, isEmpty);
+
+    store.update('1', text: 'Bake bread', images: []);
+    await pumpEventQueue();
+
+    expect(requests, hasLength(1));
+    expect(store.thoughts.single.theme, 'Bakery');
+  });
+
   test('does not ask twice about a thought the AI left out', () async {
     reply = (request) async => chatReply({'themes': {}});
     await start([

@@ -97,6 +97,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noTheme => 'No theme';
 
   @override
+  String get theme => 'Theme';
+
+  @override
+  String get chooseTheme => 'Choose a theme';
+
+  @override
+  String get newThemeItem => 'New theme...';
+
+  @override
+  String get letAiChoose => 'Let the AI choose';
+
+  @override
+  String get newTheme => 'New theme';
+
+  @override
+  String get renameTheme => 'Rename theme';
+
+  @override
+  String get themeName => 'Theme name';
+
+  @override
+  String themesJoin(String theme) {
+    return 'Its thoughts will join $theme, which already exists.';
+  }
+
+  @override
+  String get rename => 'Rename';
+
+  @override
+  String get create => 'Create';
+
+  @override
   String get tidySettings => 'AI tidying';
 
   @override

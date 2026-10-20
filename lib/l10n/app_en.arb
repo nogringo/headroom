@@ -118,7 +118,52 @@
   },
   "noTheme": "No theme",
   "@noTheme": {
-    "description": "Sidebar entry for the thoughts the AI has not sorted, or that hold only images."
+    "description": "Sidebar entry for the thoughts without a theme. Also the edit dialog's theme menu item that takes a thought out of its theme, while no AI is set up."
+  },
+  "theme": "Theme",
+  "@theme": {
+    "description": "Tooltip of the edit dialog's button that shows the thought's theme and opens a menu to change it."
+  },
+  "chooseTheme": "Choose a theme",
+  "@chooseTheme": {
+    "description": "Label of the edit dialog's theme button while the thought has no theme."
+  },
+  "newThemeItem": "New theme...",
+  "@newThemeItem": {
+    "description": "Item of the edit dialog's theme menu that asks for the name of a theme to create."
+  },
+  "letAiChoose": "Let the AI choose",
+  "@letAiChoose": {
+    "description": "Item of the edit dialog's theme menu that hands a theme the person chose back to the AI, which then sorts the thought itself."
+  },
+  "newTheme": "New theme",
+  "@newTheme": {
+    "description": "Title of the dialog that asks for a new theme's name."
+  },
+  "renameTheme": "Rename theme",
+  "@renameTheme": {
+    "description": "Tooltip of the sidebar button beside the open theme, and title of the dialog it opens."
+  },
+  "themeName": "Theme name",
+  "@themeName": {
+    "description": "Label of the field that holds a theme's name."
+  },
+  "themesJoin": "Its thoughts will join {theme}, which already exists.",
+  "@themesJoin": {
+    "description": "Shown under the field while renaming a theme to the name of another, which merges the two.",
+    "placeholders": {
+      "theme": {
+        "type": "String"
+      }
+    }
+  },
+  "rename": "Rename",
+  "@rename": {
+    "description": "Confirms a theme's new name."
+  },
+  "create": "Create",
+  "@create": {
+    "description": "Confirms a new theme's name."
   },
   "tidySettings": "AI tidying",
   "@tidySettings": {

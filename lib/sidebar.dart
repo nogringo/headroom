@@ -3,15 +3,17 @@ import 'package:flutter/material.dart';
 import 'focus_ring.dart';
 import 'l10n/app_localizations.dart';
 import 'theme.dart';
+import 'theme_names.dart';
 
-/// Opens every thought or a single theme's, with the backup and the AI's
-/// settings below.
+/// Opens every thought or a single theme's, which it can rename, with the
+/// backup and the AI's settings below.
 class Sidebar extends StatelessWidget {
   const Sidebar({
     super.key,
     required this.themes,
     required this.selected,
     required this.onSelect,
+    required this.onRename,
     required this.onBackup,
     required this.tidying,
     required this.onTidySettings,
@@ -23,6 +25,7 @@ class Sidebar extends StatelessWidget {
   /// Null for every thought.
   final String? selected;
   final ValueChanged<String?> onSelect;
+  final ValueChanged<String> onRename;
   final VoidCallback onBackup;
   final bool tidying;
   final VoidCallback onTidySettings;
@@ -30,15 +33,23 @@ class Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final named = [
-      for (final theme in themes)
-        if (theme.isNotEmpty) theme,
-    ]..sort((a, b) => _plain(a).compareTo(_plain(b)));
+    final named = sortedThemes(themes.where((theme) => theme.isNotEmpty));
 
     Widget entry(String? theme, String label) => _Entry(
       label: label,
       selected: theme == selected,
       onTap: () => onSelect(theme),
+      trailing: theme == selected && theme != null && theme.isNotEmpty
+          ? IconButton(
+              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+              padding: EdgeInsets.zero,
+              iconSize: 18,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              tooltip: l10n.renameTheme,
+              onPressed: () => onRename(theme),
+              icon: const Icon(Icons.edit_outlined),
+            )
+          : null,
     );
 
     return Column(
@@ -94,12 +105,14 @@ class _Entry extends StatelessWidget {
     required this.onTap,
     this.selected = false,
     this.leading,
+    this.trailing,
   });
 
   final String label;
   final VoidCallback onTap;
   final bool selected;
   final Widget? leading;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -108,57 +121,60 @@ class _Entry extends StatelessWidget {
     // The other themes stay quiet beside the one open.
     final color = selected ? scheme.onSurface : scheme.onSurfaceVariant;
     final leading = this.leading;
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: FocusRing(
-        builder: (onFocusChange) => Material(
-          color: selected ? scheme.outlineVariant : Colors.transparent,
-          borderRadius: paperRadius,
-          child: InkWell(
-            borderRadius: paperRadius,
-            onTap: onTap,
-            onFocusChange: onFocusChange,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  if (leading != null) ...[
-                    IconTheme.merge(
-                      data: IconThemeData(color: color, size: 18),
-                      child: leading,
+    final trailing = this.trailing;
+    return Material(
+      color: selected ? scheme.outlineVariant : Colors.transparent,
+      borderRadius: paperRadius,
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              button: true,
+              selected: selected,
+              child: FocusRing(
+                builder: (onFocusChange) => InkWell(
+                  borderRadius: paperRadius,
+                  onTap: onTap,
+                  onFocusChange: onFocusChange,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
                     ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: color,
-                        fontWeight: selected ? FontWeight.w600 : null,
-                      ),
+                    child: Row(
+                      children: [
+                        if (leading != null) ...[
+                          IconTheme.merge(
+                            data: IconThemeData(color: color, size: 18),
+                            child: leading,
+                          ),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: color,
+                              fontWeight: selected ? FontWeight.w600 : null,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+          if (trailing != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 2),
+              child: trailing,
+            ),
+        ],
       ),
     );
   }
 }
-
-const _accented = 'àáâäãåçèéêëìíîïñòóôöõùúûüýÿ';
-const _bare = 'aaaaaaceeeeiiiinooooouuuuyy';
-
-/// Lowercase without accents, so "Études" sorts among the E.
-String _plain(String theme) => [
-  for (final char in theme.toLowerCase().split(''))
-    switch (_accented.indexOf(char)) {
-      -1 => char,
-      final i => _bare[i],
-    },
-].join();

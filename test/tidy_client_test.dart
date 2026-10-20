@@ -21,6 +21,7 @@ void main() {
       text: 'Dentiste mardi 14h',
       createdAt: DateTime(2026, 10, 6, 8),
       theme: 'Santé',
+      themeChosen: true,
     ),
   ];
 
@@ -70,6 +71,7 @@ void main() {
       'noted': '2026-10-06, Tuesday',
       'text': 'Dentiste mardi 14h',
       'theme': 'Santé',
+      'byOwner': true,
     });
     expect(list.thoughts.first, isNot(contains('theme')));
 

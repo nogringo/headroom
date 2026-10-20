@@ -19,6 +19,8 @@ import 'list_settings.dart';
 import 'report_error.dart';
 import 'sidebar.dart';
 import 'theme.dart';
+import 'theme_name_dialog.dart';
+import 'theme_names.dart';
 import 'thought.dart';
 import 'thought_store.dart';
 import 'tidier.dart';
@@ -326,14 +328,33 @@ class _CaptureScreenState extends State<CaptureScreen> {
       builder: (_) => _EditDialog(
         store: _store,
         thought: thought,
+        themes: _themes(),
+        aiSorts: _tidier.settings != null,
         onDelete: () => _remove(thought),
       ),
     );
-    if (edit != null) {
-      // New text drops the theme, which would take it out of this one.
-      _notedHere.add(thought.id);
-      _store.update(thought.id, text: edit.text, images: edit.images);
+    if (edit == null) return;
+    // New text drops the theme, which would take it out of this one.
+    _notedHere.add(thought.id);
+    _store.update(thought.id, text: edit.text, images: edit.images);
+    if (edit.theme != thought.theme ||
+        edit.themeChosen != thought.themeChosen) {
+      _store.chooseTheme(thought.id, edit.themeChosen ? edit.theme : null);
     }
+  }
+
+  Set<String> _themes() => {for (final t in _store.thoughts) ?t.theme};
+
+  /// Renames the open [theme], which joins another when it takes its name.
+  Future<void> _renameTheme(String theme) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => ThemeNameDialog(themes: _themes(), renaming: theme),
+    );
+    if (name == null || name == theme) return;
+    // Before the store tells the list, which then keeps the same thoughts.
+    _listSettings.theme = name;
+    _store.renameTheme(theme, name);
   }
 
   void _view(List<String> names, int index) => showDialog<void>(
@@ -476,8 +497,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  /// Once the AI has given a theme, the sidebar sits beside [note] and the
-  /// list on a wide window, else in a drawer.
+  /// Once a thought has a theme, the sidebar sits beside [note] and the list
+  /// on a wide window, else in a drawer.
   Widget _buildLayout(BuildContext context, Widget note) {
     final themes = _sidebarThemes();
     final wide = MediaQuery.sizeOf(context).width >= _wideWidth;
@@ -487,6 +508,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             themes: themes,
             selected: _theme,
             onSelect: _open,
+            onRename: _renameTheme,
             onBackup: _openBackup,
             tidying: _tidier.working,
             onTidySettings: _openTidySettings,
@@ -1593,17 +1615,30 @@ class _SubmitOnEnter extends StatelessWidget {
   );
 }
 
-typedef _Edit = ({String text, List<String> images});
+typedef _Edit = ({
+  String text,
+  List<String> images,
+  String? theme,
+  bool themeChosen,
+});
 
 class _EditDialog extends StatefulWidget {
   const _EditDialog({
     required this.store,
     required this.thought,
+    required this.themes,
+    required this.aiSorts,
     required this.onDelete,
   });
 
   final ThoughtStore store;
   final Thought thought;
+
+  /// Every theme a thought has, to pick from.
+  final Set<String> themes;
+
+  /// Whether an AI sorts the thoughts without a theme.
+  final bool aiSorts;
   final VoidCallback onDelete;
 
   @override
@@ -1617,6 +1652,8 @@ class _EditDialogState extends State<_EditDialog> {
     for (final name in widget.thought.images)
       (name: name, image: widget.store.imageNamed(name)),
   ];
+  late String? _theme = widget.thought.theme;
+  late var _themeChosen = widget.thought.themeChosen;
   String? _error;
 
   bool _canSave(String text) => text.trim().isNotEmpty || _images.isNotEmpty;
@@ -1633,6 +1670,8 @@ class _EditDialogState extends State<_EditDialog> {
     Navigator.pop<_Edit>(context, (
       text: _controller.text,
       images: [for (final pasted in _images) pasted.name],
+      theme: _theme,
+      themeChosen: _themeChosen,
     ));
   }
 
@@ -1729,6 +1768,17 @@ class _EditDialogState extends State<_EditDialog> {
                 ),
               ),
             ),
+          const SizedBox(height: 12),
+          _ThemeButton(
+            theme: _theme,
+            chosen: _themeChosen,
+            themes: widget.themes,
+            aiSorts: widget.aiSorts,
+            onChoose: (theme) => setState(() {
+              _theme = theme;
+              _themeChosen = theme != null;
+            }),
+          ),
         ],
       ),
       actions: [
@@ -1770,6 +1820,84 @@ class _EditDialogState extends State<_EditDialog> {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Shows a thought's theme, and opens a menu to choose another, create one,
+/// or take the thought out of its theme.
+class _ThemeButton extends StatelessWidget {
+  const _ThemeButton({
+    required this.theme,
+    required this.chosen,
+    required this.themes,
+    required this.aiSorts,
+    required this.onChoose,
+  });
+
+  final String? theme;
+
+  /// Whether the person chose [theme] rather than the AI.
+  final bool chosen;
+  final Set<String> themes;
+  final bool aiSorts;
+
+  /// Null takes the thought out of its theme, for the AI to sort if any.
+  final ValueChanged<String?> onChoose;
+
+  Future<void> _create(BuildContext context) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => ThemeNameDialog(themes: themes),
+    );
+    if (name != null) onChoose(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final theme = this.theme;
+    final named = sortedThemes({...themes, ?theme});
+    return MenuAnchor(
+      menuChildren: [
+        for (final name in named)
+          RadioMenuButton<String>(
+            value: name,
+            groupValue: theme,
+            onChanged: (_) => onChoose(name),
+            child: Text(name),
+          ),
+        if (named.isNotEmpty) const Divider(),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.add_rounded),
+          onPressed: () => _create(context),
+          child: Text(l10n.newThemeItem),
+        ),
+        // The AI's own theme is already its choice.
+        if (theme != null && (chosen || !aiSorts))
+          MenuItemButton(
+            leadingIcon: Icon(
+              aiSorts ? Icons.auto_awesome_outlined : Icons.label_off_outlined,
+            ),
+            onPressed: () => onChoose(null),
+            child: Text(aiSorts ? l10n.letAiChoose : l10n.noTheme),
+          ),
+      ],
+      builder: (context, controller, _) => Tooltip(
+        message: l10n.theme,
+        child: TextButton.icon(
+          style: TextButton.styleFrom(
+            foregroundColor: scheme.onPrimaryContainer,
+            // Lines the label up with the text above.
+            padding: const EdgeInsetsDirectional.fromSTEB(0, 8, 8, 8),
+          ),
+          onPressed: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          icon: const Icon(Icons.label_outline_rounded, size: 18),
+          label: Text(theme ?? l10n.chooseTheme),
+        ),
+      ),
     );
   }
 }

@@ -35,4 +35,24 @@ void main() {
     expect(Thought.fromJson(unsorted.toJson()).theme, isNull);
     expect(Thought.fromJson(sorted.toJson()).theme, 'Errands');
   });
+
+  test('remembers a theme the person chose', () {
+    final byAi = Thought(
+      id: '1',
+      text: 'Note',
+      createdAt: DateTime(2026),
+      theme: 'Errands',
+    );
+    final chosen = Thought(
+      id: '2',
+      text: 'Note',
+      createdAt: DateTime(2026),
+      theme: 'Errands',
+      themeChosen: true,
+    );
+
+    expect(byAi.toJson(), isNot(contains('themeChosen')));
+    expect(Thought.fromJson(byAi.toJson()).themeChosen, isFalse);
+    expect(Thought.fromJson(chosen.toJson()).themeChosen, isTrue);
+  });
 }

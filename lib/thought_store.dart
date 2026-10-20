@@ -68,35 +68,60 @@ class ThoughtStore extends ChangeNotifier {
   }
 
   /// Needs a non-blank [text], some [images], or both. A removed image is
-  /// deleted at the next [load]. New text drops the theme, to be sorted again.
+  /// deleted at the next [load]. New text drops the theme the AI gave, to be
+  /// sorted again.
   void update(String id, {required String text, required List<String> images}) {
     final index = _thoughts.indexWhere((t) => t.id == id);
     final trimmed = text.trim();
     if (index == -1 || (trimmed.isEmpty && images.isEmpty)) return;
     final thought = _thoughts[index];
+    final keepsTheme = thought.themeChosen || trimmed == thought.text;
     _thoughts[index] = Thought(
       id: thought.id,
       text: trimmed,
       images: images,
       createdAt: thought.createdAt,
-      theme: trimmed == thought.text ? thought.theme : null,
+      theme: keepsTheme ? thought.theme : null,
+      themeChosen: thought.themeChosen,
     );
     _changed();
   }
 
-  /// Gives each thought named in [themes] its theme. Unknown ids are skipped.
+  /// Gives each thought named in [themes] the theme the AI found for it.
+  /// Unknown ids and themes the person chose are skipped.
   void setThemes(Map<String, String> themes) {
     var changed = false;
     for (final (index, thought) in _thoughts.indexed) {
       final theme = themes[thought.id];
-      if (theme == null || theme == thought.theme) continue;
-      _thoughts[index] = Thought(
-        id: thought.id,
-        text: thought.text,
-        images: thought.images,
-        createdAt: thought.createdAt,
-        theme: theme,
-      );
+      if (theme == null || theme == thought.theme || thought.themeChosen) {
+        continue;
+      }
+      _thoughts[index] = _withTheme(thought, theme);
+      changed = true;
+    }
+    if (changed) _changed();
+  }
+
+  /// Puts the thought in the [theme] the person chose. Null hands it back to
+  /// the AI.
+  void chooseTheme(String id, String? theme) {
+    final index = _thoughts.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+    _thoughts[index] = _withTheme(
+      _thoughts[index],
+      theme,
+      chosen: theme != null,
+    );
+    _changed();
+  }
+
+  /// Moves every thought of [from] to [to], which may already hold some.
+  void renameTheme(String from, String to) {
+    if (from == to) return;
+    var changed = false;
+    for (final (index, thought) in _thoughts.indexed) {
+      if (thought.theme != from) continue;
+      _thoughts[index] = _withTheme(thought, to, chosen: thought.themeChosen);
       changed = true;
     }
     if (changed) _changed();
@@ -119,6 +144,7 @@ class ThoughtStore extends ChangeNotifier {
       images: {for (final o in originals) ...o.thought.images}.toList(),
       createdAt: newest.thought.createdAt,
       theme: newest.thought.theme,
+      themeChosen: newest.thought.themeChosen,
     );
     for (final o in originals.reversed) {
       _thoughts.removeAt(o.index);
@@ -170,6 +196,16 @@ class ThoughtStore extends ChangeNotifier {
     _changed();
     return at;
   }
+
+  Thought _withTheme(Thought thought, String? theme, {bool chosen = false}) =>
+      Thought(
+        id: thought.id,
+        text: thought.text,
+        images: thought.images,
+        createdAt: thought.createdAt,
+        theme: theme,
+        themeChosen: chosen,
+      );
 
   /// Completes once every change made so far has been written.
   Future<void> flush() => _pendingWrite;

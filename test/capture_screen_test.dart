@@ -1050,6 +1050,114 @@ void main() {
     expect(listed('Buy bread'), findsOneWidget);
   });
 
+  testWidgets('the edit dialog puts a thought in another theme, or a new one', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '3', text: 'Buy milk', createdAt: now, theme: 'Errands'),
+      Thought(id: '2', text: 'Fix the build', createdAt: now, theme: 'Work'),
+      Thought(id: '1', text: 'Buy bread', createdAt: now, theme: 'Errands'),
+    ]);
+    Thought bread() => store.thoughts.last;
+    Future<void> openMenu() async {
+      await tester.tap(find.text('Buy bread'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Theme'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> create(String name) async {
+      await tester.tap(find.text('New theme...'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Theme name'),
+        name,
+      );
+      await tester.pump();
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
+    }
+
+    await openMenu();
+    expect(find.text('Let the AI choose'), findsNothing);
+    await tester.tap(find.text('Work'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(bread().theme, 'Work');
+    expect(bread().themeChosen, isTrue);
+
+    await openMenu();
+    await create('Bakery');
+    expect(find.text('Bakery'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(bread().theme, 'Work');
+
+    await openMenu();
+    await create('errands');
+    expect(find.text('Errands'), findsOneWidget);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(bread().theme, 'Errands');
+
+    await openMenu();
+    await tester.tap(find.text('No theme'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose a theme'), findsOneWidget);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(bread().theme, isNull);
+    expect(bread().themeChosen, isFalse);
+  });
+
+  testWidgets('renames the open theme, or joins it to another', (tester) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '2', text: 'Fix the build', createdAt: now, theme: 'Work'),
+      Thought(id: '1', text: 'Buy bread', createdAt: now, theme: 'Errands'),
+    ]);
+    Future<void> rename(String name) async {
+      await tester.tap(find.byTooltip('Rename theme'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Theme name'),
+        name,
+      );
+      await tester.pump();
+    }
+
+    expect(find.byTooltip('Rename theme'), findsNothing);
+    await tester.tap(find.text('Errands'));
+    await tester.pumpAndSettle();
+
+    await rename('Shopping');
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    expect(find.text('Errands'), findsNothing);
+    expect(find.text('Shopping'), findsOneWidget);
+    expect(listed('Buy bread'), findsOneWidget);
+    final reopened = ListSettings(storage);
+    await reopened.load();
+    expect(reopened.theme, 'Shopping');
+
+    await rename('work');
+    expect(
+      find.text('Its thoughts will join Work, which already exists.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    expect(find.text('Shopping'), findsNothing);
+    expect(listed('Buy bread'), findsOneWidget);
+    expect(listed('Fix the build'), findsOneWidget);
+    expect(store.thoughts.map((t) => t.theme), ['Work', 'Work']);
+  });
+
   group('with an AI', () {
     testWidgets('a wide window lists one theme at a time from the sidebar', (
       tester,
@@ -1280,6 +1388,36 @@ void main() {
       expect(find.text(error), findsNothing);
       expect(find.text('Insufficient balance.'), findsNothing);
       expect(store.thoughts.single.theme, 'Errands');
+    });
+
+    testWidgets('a chosen theme can be handed back to the AI', (tester) async {
+      await pumpApp(
+        tester,
+        [
+          Thought(
+            id: '1',
+            text: 'Buy bread',
+            createdAt: DateTime.now(),
+            theme: 'Bakery',
+            themeChosen: true,
+          ),
+        ],
+        const {},
+        (request) async => sortAllInto(request, 'Errands'),
+      );
+
+      await tester.tap(find.text('Buy bread'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Theme'));
+      await tester.pumpAndSettle();
+      expect(find.text('No theme'), findsNothing);
+      await tester.tap(find.text('Let the AI choose'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(store.thoughts.single.theme, 'Errands');
+      expect(store.thoughts.single.themeChosen, isFalse);
     });
 
     testWidgets('is set up from the broom button', (tester) async {

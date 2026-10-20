@@ -97,6 +97,38 @@ class AppLocalizationsFr extends AppLocalizations {
   String get noTheme => 'Sans thème';
 
   @override
+  String get theme => 'Thème';
+
+  @override
+  String get chooseTheme => 'Choisir un thème';
+
+  @override
+  String get newThemeItem => 'Nouveau thème...';
+
+  @override
+  String get letAiChoose => 'Laisser l\'IA choisir';
+
+  @override
+  String get newTheme => 'Nouveau thème';
+
+  @override
+  String get renameTheme => 'Renommer le thème';
+
+  @override
+  String get themeName => 'Nom du thème';
+
+  @override
+  String themesJoin(String theme) {
+    return 'Ses pensées rejoindront le thème $theme, qui existe déjà.';
+  }
+
+  @override
+  String get rename => 'Renommer';
+
+  @override
+  String get create => 'Créer';
+
+  @override
   String get tidySettings => 'Rangement par IA';
 
   @override
