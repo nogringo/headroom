@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:headroom/backup.dart';
@@ -29,6 +30,7 @@ void main() {
   late InMemoryStorage storage;
   late ThoughtStore store;
   late Tidier tidier;
+  late ListSettings listSettings;
   Uint8List? clipboardImage;
   String? clipboardText;
   Uint8List? copiedImage;
@@ -85,14 +87,14 @@ void main() {
       delay: Duration.zero,
     );
     await tidier.load();
-    final listSettings = ListSettings(storage);
+    listSettings = ListSettings(storage);
     await listSettings.load();
     await tester.pumpWidget(
       HeadroomApp(
         store: store,
         tidier: tidier,
         listSettings: listSettings,
-        backup: Backup(store, tidier, storage),
+        backup: Backup(store, tidier, listSettings, storage),
       ),
     );
     await tester.pumpAndSettle();
@@ -1035,7 +1037,7 @@ void main() {
           store: store,
           tidier: tidier,
           listSettings: listSettings,
-          backup: Backup(store, tidier, storage),
+          backup: Backup(store, tidier, listSettings, storage),
         ),
       );
       await tester.pumpAndSettle();
@@ -1156,6 +1158,152 @@ void main() {
     expect(listed('Buy bread'), findsOneWidget);
     expect(listed('Fix the build'), findsOneWidget);
     expect(store.thoughts.map((t) => t.theme), ['Work', 'Work']);
+  });
+
+  group('the sidebar', () {
+    late List<String> Function() order;
+
+    Future<void> pumpThemes(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final now = DateTime.now();
+      await pumpApp(tester, [
+        Thought(id: '4', text: 'Pay rent', createdAt: now),
+        Thought(id: '3', text: 'Read Dune', createdAt: now, theme: 'Études'),
+        Thought(id: '2', text: 'Fix the build', createdAt: now, theme: 'Work'),
+        Thought(id: '1', text: 'Buy bread', createdAt: now, theme: 'Errands'),
+      ]);
+      order = () {
+        final themes = [
+          'Errands',
+          'Études',
+          'Work',
+          'Bills',
+        ].where((theme) => find.text(theme).evaluate().isNotEmpty);
+        return themes.toList()..sort(
+          (a, b) => tester
+              .getTopLeft(find.text(a))
+              .dy
+              .compareTo(tester.getTopLeft(find.text(b)).dy),
+        );
+      };
+    }
+
+    Future<List<String>> savedOrder() async {
+      final reopened = ListSettings(storage);
+      await reopened.load();
+      return reopened.themeOrder;
+    }
+
+    Future<void> drag(
+      WidgetTester tester,
+      TestGesture gesture,
+      double dy,
+    ) async {
+      for (var i = 0; i < 10; i++) {
+        await gesture.moveBy(Offset(0, dy / 10));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('moves a theme dragged with a mouse or after a long press', (
+      tester,
+    ) async {
+      await pumpThemes(tester);
+      expect(order(), ['Errands', 'Études', 'Work']);
+
+      final mouse = await tester.startGesture(
+        tester.getCenter(find.text('Work')),
+        kind: PointerDeviceKind.mouse,
+      );
+      await drag(tester, mouse, -100);
+      expect(order(), ['Work', 'Errands', 'Études']);
+      expect(await savedOrder(), ['Work', 'Errands', 'Études']);
+
+      final finger = await tester.startGesture(
+        tester.getCenter(find.text('Errands')),
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await drag(tester, finger, 50);
+      expect(order(), ['Work', 'Études', 'Errands']);
+
+      store.chooseTheme('4', 'Bills');
+      await tester.pumpAndSettle();
+      expect(order(), ['Work', 'Études', 'Errands', 'Bills']);
+    });
+
+    testWidgets('a click that wobbles still opens the theme', (tester) async {
+      await pumpThemes(tester);
+
+      final mouse = await tester.startGesture(
+        tester.getCenter(find.text('Work')),
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.moveBy(const Offset(0, 4));
+      await mouse.up();
+      await tester.pumpAndSettle();
+
+      expect(listed('Fix the build'), findsOneWidget);
+      expect(listed('Buy bread'), findsNothing);
+      expect(await savedOrder(), isEmpty);
+    });
+
+    testWidgets('a screen reader or the keyboard moves a theme', (
+      tester,
+    ) async {
+      await pumpThemes(tester);
+
+      Focus.of(tester.element(find.text('Errands'))).requestFocus();
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pumpAndSettle();
+      expect(order(), ['Études', 'Errands', 'Work']);
+      expect(
+        Focus.of(tester.element(find.text('Errands'))).hasPrimaryFocus,
+        isTrue,
+      );
+
+      tester.semantics.customAction(
+        find.semantics.byLabel('Work'),
+        const CustomSemanticsAction(label: 'Move up'),
+      );
+      await tester.pumpAndSettle();
+      expect(order(), ['Études', 'Work', 'Errands']);
+      expect(await savedOrder(), ['Études', 'Work', 'Errands']);
+    });
+
+    testWidgets('follows the order a backup brings', (tester) async {
+      await pumpThemes(tester);
+
+      listSettings.restoreThemeOrder(['Work', 'Études']);
+      await tester.pumpAndSettle();
+
+      expect(order(), ['Work', 'Études', 'Errands']);
+    });
+
+    testWidgets('a renamed theme keeps its place', (tester) async {
+      await pumpThemes(tester);
+      listSettings.themeOrder = ['Work', 'Errands', 'Études'];
+      await tester.tap(find.text('Errands'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Rename theme'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Theme name'),
+        'Shopping',
+      );
+      await tester.pump();
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+
+      expect(await savedOrder(), ['Work', 'Shopping', 'Études']);
+    });
   });
 
   group('with an AI', () {

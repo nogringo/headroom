@@ -4,6 +4,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:headroom/backup.dart';
+import 'package:headroom/list_settings.dart';
 import 'package:headroom/thought.dart';
 import 'package:headroom/thought_store.dart';
 import 'package:headroom/tidier.dart';
@@ -14,6 +15,13 @@ import 'package:http/testing.dart';
 import 'ai_replies.dart';
 import 'in_memory_storage.dart';
 
+typedef _App = ({
+  InMemoryStorage storage,
+  ThoughtStore store,
+  Tidier tidier,
+  ListSettings listSettings,
+});
+
 final png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
 );
@@ -22,15 +30,17 @@ void main() {
   late String image;
   setUpAll(() async => image = await InMemoryStorage().saveImage(png));
 
-  Future<({InMemoryStorage storage, ThoughtStore store, Tidier tidier})> open(
+  Future<_App> open(
     List<Thought> thoughts, {
     AiSettings? ai,
     List<Suggestion> declined = const [],
+    List<String> themeOrder = const [],
   }) async {
     final storage = InMemoryStorage(thoughts);
     await storage.saveImage(png);
     if (ai != null) storage.values['ai'] = jsonEncode(ai);
     storage.values['tidy'] = jsonEncode({'declined': declined});
+    storage.values['list'] = jsonEncode({'themeOrder': themeOrder});
     final store = ThoughtStore(storage);
     await store.load();
     final tidier = Tidier(
@@ -42,28 +52,39 @@ void main() {
     );
     addTearDown(tidier.dispose);
     await tidier.load();
-    return (storage: storage, store: store, tidier: tidier);
+    final listSettings = ListSettings(storage);
+    await listSettings.load();
+    return (
+      storage: storage,
+      store: store,
+      tidier: tidier,
+      listSettings: listSettings,
+    );
   }
 
-  Backup backupOf(
-    ({InMemoryStorage storage, ThoughtStore store, Tidier tidier}) app,
-  ) => Backup(app.store, app.tidier, app.storage);
+  Backup backupOf(_App app) =>
+      Backup(app.store, app.tidier, app.listSettings, app.storage);
 
   final day = DateTime(2026, 10, 19, 9);
 
-  Future<Uint8List> saveFrom(List<Thought> thoughts) async {
+  Future<Uint8List> saveFrom(
+    List<Thought> thoughts, {
+    List<String> themeOrder = const ['Work', 'Errands'],
+  }) async {
     final from = await open(
       thoughts,
       ai: testAi,
       declined: [
         const Merge(['2', '1'], 'Groceries'),
       ],
+      themeOrder: themeOrder,
     );
+    from.listSettings.theme = 'Work';
     return backupOf(from).create();
   }
 
-  test('restores thoughts, images, the AI without its key, and what was '
-      'declined', () async {
+  test('restores thoughts, images, the AI without its key, what was '
+      'declined, and the order of the themes', () async {
     final zip = await saveFrom([
       Thought(
         id: '2',
@@ -71,6 +92,7 @@ void main() {
         images: [image],
         createdAt: day.add(const Duration(hours: 1)),
         theme: 'Errands',
+        themeChosen: true,
       ),
       Thought(id: '1', text: 'Eggs', createdAt: day, theme: 'Errands'),
     ]);
@@ -82,11 +104,14 @@ void main() {
     expect(to.store.thoughts.map((t) => t.text), ['Milk', 'Eggs']);
     expect(to.store.thoughts.first.images, [image]);
     expect(to.store.thoughts.first.theme, 'Errands');
+    expect(to.store.thoughts.map((t) => t.themeChosen), [true, false]);
     expect(await to.storage.readImage(image), png);
     expect(to.tidier.settings?.baseUrl, testAi.baseUrl);
     expect(to.tidier.settings?.model, testAi.model);
     expect(to.tidier.settings?.apiKey, isEmpty);
     expect(to.tidier.declined.single.ids, ['2', '1']);
+    expect(to.listSettings.themeOrder, ['Work', 'Errands']);
+    expect(to.listSettings.theme, isNull);
     await to.store.flush();
     expect(to.storage.saved, hasLength(2));
   });
@@ -152,6 +177,22 @@ void main() {
     ]);
     expect(to.tidier.settings?.model, 'local');
     expect(await backupOf(to).restore(zip), (thoughts: 0, ai: false));
+  });
+
+  test('places the themes the order here lacks after its own', () async {
+    final zip = await saveFrom(
+      [Thought(id: '1', text: 'Eggs', createdAt: day)],
+      themeOrder: ['Home', 'Errands', 'Work'],
+    );
+    final files = ZipDecoder().decodeBytes(zip);
+    expect(jsonDecode(utf8.decode(files.find('list.json')!.content)), {
+      'themeOrder': ['Home', 'Errands', 'Work'],
+    });
+    final to = await open([], themeOrder: ['Work', 'Home']);
+
+    await backupOf(to).restore(zip);
+
+    expect(to.listSettings.themeOrder, ['Work', 'Home', 'Errands']);
   });
 
   test('turns away a file that is not a backup', () async {

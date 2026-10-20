@@ -27,6 +27,24 @@ void main() {
     expect(await themeOnReopen(storage), isNull);
   });
 
+  test('keeps the themes in the order given, through renames', () async {
+    final storage = InMemoryStorage();
+    final settings = ListSettings(storage)
+      ..themeOrder = ['Work', 'Errands', 'Home'];
+
+    settings.renameTheme('Errands', 'Shopping');
+    expect(settings.themeOrder, ['Work', 'Shopping', 'Home']);
+    settings.renameTheme('Shopping', 'Home');
+    expect(settings.themeOrder, ['Work', 'Home']);
+    settings.renameTheme('Garden', 'Yard');
+    expect(settings.themeOrder, ['Work', 'Home']);
+
+    await pumpEventQueue();
+    final reopened = ListSettings(storage);
+    await reopened.load();
+    expect(reopened.themeOrder, ['Work', 'Home']);
+  });
+
   test('starts on every thought from unreadable settings', () async {
     final storage = InMemoryStorage()..values['list'] = '{"theme": 3}';
     expect(await themeOnReopen(storage), isNull);

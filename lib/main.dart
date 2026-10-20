@@ -24,7 +24,7 @@ Future<void> main() async {
   await tidier.load();
   final listSettings = ListSettings(storage);
   await listSettings.load();
-  final backup = Backup(store, tidier, storage);
+  final backup = Backup(store, tidier, listSettings, storage);
   await backup.load();
   runApp(
     HeadroomApp(

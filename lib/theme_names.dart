@@ -10,12 +10,21 @@ String _plain(String theme) => [
     },
 ].join();
 
-/// Alphabetically, whatever their case and accents.
-List<String> sortedThemes(Iterable<String> themes) =>
-    [...themes]..sort((a, b) => _plain(a).compareTo(_plain(b)));
-
 /// The theme of [themes] that [name] spells, whatever its case and accents.
 String? themeSpelled(String name, Iterable<String> themes) {
   final plain = _plain(name.trim());
   return themes.where((theme) => _plain(theme) == plain).firstOrNull;
+}
+
+/// The [themes] in [order], then those it lacks, alphabetically whatever
+/// their case and accents.
+List<String> orderedThemes(Iterable<String> themes, List<String> order) {
+  final present = themes.toSet();
+  final unordered = present.where((theme) => !order.contains(theme)).toList()
+    ..sort((a, b) => _plain(a).compareTo(_plain(b)));
+  return [
+    for (final theme in order)
+      if (present.contains(theme)) theme,
+    ...unordered,
+  ];
 }

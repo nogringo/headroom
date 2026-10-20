@@ -130,17 +130,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  /// The themes the sidebar opens, '' for the thoughts that will get none.
-  /// Empty when there is no sidebar.
-  Set<String> _sidebarThemes() {
+  /// The themes the sidebar opens, in the person's order, then '' for the
+  /// thoughts that will get none. Empty when there is no sidebar.
+  List<String> _sidebarThemes() {
     final theme = _theme;
     final themes = {for (final t in _store.thoughts) ?t.theme, ?theme};
-    if (themes.isEmpty) return themes;
-    // Not the thoughts the AI is about to sort, which would make it flicker.
-    if (_store.thoughts.any((t) => t.theme == null && !_tidier.willSort(t))) {
-      themes.add('');
-    }
-    return themes;
+    if (themes.isEmpty) return const [];
+    final noThemeOpen = themes.remove('');
+    return [
+      ...orderedThemes(themes, _listSettings.themeOrder),
+      // Not for the thoughts the AI is about to sort, which would flicker.
+      if (noThemeOpen ||
+          _store.thoughts.any((t) => t.theme == null && !_tidier.willSort(t)))
+        '',
+    ];
   }
 
   Duration get _motion => MediaQuery.disableAnimationsOf(context)
@@ -343,7 +346,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
-  Set<String> _themes() => {for (final t in _store.thoughts) ?t.theme};
+  List<String> _themes() => orderedThemes({
+    for (final t in _store.thoughts) ?t.theme,
+  }, _listSettings.themeOrder);
 
   /// Renames the open [theme], which joins another when it takes its name.
   Future<void> _renameTheme(String theme) async {
@@ -353,7 +358,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
     if (name == null || name == theme) return;
     // Before the store tells the list, which then keeps the same thoughts.
-    _listSettings.theme = name;
+    _listSettings
+      ..theme = name
+      ..renameTheme(theme, name);
     _store.renameTheme(theme, name);
   }
 
@@ -381,7 +388,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final shiftEnter = _shiftEnterBreaksLine(theme.platform);
 
     return ListenableBuilder(
-      listenable: Listenable.merge([_store, _tidier]),
+      listenable: Listenable.merge([_store, _tidier, _listSettings]),
       builder: (context, note) => _buildLayout(context, note!),
       child: Align(
         alignment: Alignment.topCenter,
@@ -509,6 +516,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             selected: _theme,
             onSelect: _open,
             onRename: _renameTheme,
+            onReorder: (order) => _listSettings.themeOrder = order,
             onBackup: _openBackup,
             tidying: _tidier.working,
             onTidySettings: _openTidySettings,
@@ -1634,8 +1642,8 @@ class _EditDialog extends StatefulWidget {
   final ThoughtStore store;
   final Thought thought;
 
-  /// Every theme a thought has, to pick from.
-  final Set<String> themes;
+  /// Every theme a thought has, in the sidebar's order, to pick from.
+  final List<String> themes;
 
   /// Whether an AI sorts the thoughts without a theme.
   final bool aiSorts;
@@ -1839,7 +1847,7 @@ class _ThemeButton extends StatelessWidget {
 
   /// Whether the person chose [theme] rather than the AI.
   final bool chosen;
-  final Set<String> themes;
+  final List<String> themes;
   final bool aiSorts;
 
   /// Null takes the thought out of its theme, for the AI to sort if any.
@@ -1858,7 +1866,10 @@ class _ThemeButton extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     final theme = this.theme;
-    final named = sortedThemes({...themes, ?theme});
+    final named = [
+      ...themes,
+      if (theme != null && !themes.contains(theme)) theme,
+    ];
     return MenuAnchor(
       menuChildren: [
         for (final name in named)

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 
+import 'list_settings.dart';
 import 'report_error.dart';
 import 'thought.dart';
 import 'thought_storage.dart';
@@ -18,15 +19,18 @@ typedef _Contents = ({
   Map<String, Uint8List> images,
   AiSettings? ai,
   List<Suggestion> declined,
+  List<String> themeOrder,
 });
 
 /// A zip of the thoughts, their images, the AI's settings without its key,
-/// and the clean-ups declined, laid out like the storage on disk.
+/// the clean-ups declined and the themes' order, laid out like the storage
+/// on disk.
 class Backup {
-  Backup(this._store, this._tidier, this._storage);
+  Backup(this._store, this._tidier, this._listSettings, this._storage);
 
   final ThoughtStore _store;
   final Tidier _tidier;
+  final ListSettings _listSettings;
   final ThoughtStorage _storage;
   DateTime? _savedAt;
 
@@ -72,6 +76,12 @@ class Backup {
         jsonEncode({'declined': _tidier.declined}),
       );
     }
+    // Not the theme open, which belongs to this device.
+    if (_listSettings.themeOrder.isNotEmpty) {
+      files['list.json'] = utf8.encode(
+        jsonEncode({'themeOrder': _listSettings.themeOrder}),
+      );
+    }
     return compute(_zip, files);
   }
 
@@ -91,8 +101,9 @@ class Backup {
 
   /// Adds the thoughts missing here, with their images, and never removes
   /// or changes one. Takes the AI and the declined clean-ups as
-  /// [Tidier.restore] does. Throws a [FormatException] when [zip] is not a
-  /// backup.
+  /// [Tidier.restore] does, and the themes' order as
+  /// [ListSettings.restoreThemeOrder] does. Throws a [FormatException] when
+  /// [zip] is not a backup.
   Future<Restored> restore(Uint8List zip) async {
     final contents = await _read(zip);
     // Saved under the name of their content, whatever the zip calls them.
@@ -108,8 +119,10 @@ class Backup {
           images: [for (final name in t.images) names[name] ?? name],
           createdAt: t.createdAt,
           theme: t.theme,
+          themeChosen: t.themeChosen,
         ),
     ]);
+    _listSettings.restoreThemeOrder(contents.themeOrder);
     final ai = await _tidier.restore(contents.ai, contents.declined);
     return (thoughts: added, ai: ai);
   }
@@ -139,6 +152,10 @@ Future<_Contents> _read(Uint8List zip) async {
         if (json('tidy.json') case {'declined': final List<dynamic> declined})
           for (final item in declined)
             Suggestion.fromJson(item as Map<String, dynamic>),
+      ],
+      themeOrder: [
+        if (json('list.json') case {'themeOrder': final List<dynamic> order})
+          for (final theme in order) theme as String,
       ],
     );
   } on FormatException {
