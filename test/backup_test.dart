@@ -83,8 +83,9 @@ void main() {
     return backupOf(from).create();
   }
 
-  test('restores thoughts, images, the AI without its key, what was '
-      'declined, and the order of the themes', () async {
+  test('restores thoughts with their place, images, the AI without its key, '
+      'what was declined, and the order of the themes', () async {
+    final moved = day.add(const Duration(hours: 2)).microsecondsSinceEpoch;
     final zip = await saveFrom([
       Thought(
         id: '2',
@@ -94,7 +95,13 @@ void main() {
         theme: 'Errands',
         themeChosen: true,
       ),
-      Thought(id: '1', text: 'Eggs', createdAt: day, theme: 'Errands'),
+      Thought(
+        id: '1',
+        text: 'Eggs',
+        createdAt: day,
+        theme: 'Errands',
+        rank: moved,
+      ),
     ]);
     final to = await open([]);
 
@@ -105,6 +112,7 @@ void main() {
     expect(to.store.thoughts.first.images, [image]);
     expect(to.store.thoughts.first.theme, 'Errands');
     expect(to.store.thoughts.map((t) => t.themeChosen), [true, false]);
+    expect(to.store.thoughts.last.rank, moved);
     expect(await to.storage.readImage(image), png);
     expect(to.tidier.settings?.baseUrl, testAi.baseUrl);
     expect(to.tidier.settings?.model, testAi.model);

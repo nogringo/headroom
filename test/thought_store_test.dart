@@ -166,6 +166,68 @@ void main() {
       expect(storage.saved.last.images, ['carton']);
     });
 
+    test('a new thought ranks above every other', () {
+      final first = store.add('first')!;
+      store.reorder([first.id]);
+      final second = store.add('second')!;
+
+      expect(second.rank, greaterThan(first.rank));
+    });
+
+    test('reorders thoughts with the ranks they hold', () async {
+      store
+        ..add('Fix the build')
+        ..add('Buy milk')
+        ..add('Post the letter')
+        ..add('Buy bread');
+      final [bread, letter, milk, build] = store.thoughts;
+
+      store.reorder([milk.id, bread.id, 'deleted', letter.id]);
+      await store.flush();
+
+      final ranks = {for (final t in storage.saved) t.text: t.rank};
+      expect(ranks['Buy milk'], bread.rank);
+      expect(ranks['Buy bread'], letter.rank);
+      expect(ranks['Post the letter'], milk.rank);
+      expect(ranks['Fix the build'], build.rank);
+      expect(storage.saved.map((t) => t.text), [
+        'Buy bread',
+        'Post the letter',
+        'Buy milk',
+        'Fix the build',
+      ]);
+    });
+
+    test('a merge takes the highest rank of the thoughts it joins', () {
+      store
+        ..add('milk')
+        ..add('Buy milk');
+      final [newest, oldest] = store.thoughts;
+      store.reorder([oldest.id, newest.id]);
+
+      store.merge([oldest.id, newest.id], 'Buy milk');
+
+      expect(store.thoughts.single.id, newest.id);
+      expect(store.thoughts.single.rank, newest.rank);
+    });
+
+    test('keeps the rank through edits and themes', () {
+      store
+        ..add('first')
+        ..add('second');
+      final [second, first] = store.thoughts;
+      store.reorder([first.id, second.id]);
+      final rank = store.thoughts.last.rank;
+
+      store
+        ..update(first.id, text: 'edited', images: [])
+        ..setThemes({first.id: 'Errands'})
+        ..chooseTheme(first.id, 'Work')
+        ..renameTheme('Work', 'Jobs');
+
+      expect(store.thoughts.last.rank, rank);
+    });
+
     test('merges nothing when fewer than two thoughts are left', () {
       final thought = store.add('milk')!;
 

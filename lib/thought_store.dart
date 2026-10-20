@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -83,6 +84,7 @@ class ThoughtStore extends ChangeNotifier {
       createdAt: thought.createdAt,
       theme: keepsTheme ? thought.theme : null,
       themeChosen: thought.themeChosen,
+      rank: thought.rank,
     );
     _changed();
   }
@@ -128,8 +130,9 @@ class ThoughtStore extends ChangeNotifier {
   }
 
   /// Replaces the thoughts [ids] with one holding [text] and all their
-  /// images. It takes the place, id and theme of the newest. Returns what
-  /// [unmerge] needs, or null when fewer than two of the thoughts are left.
+  /// images. It takes the id and theme of the newest, and the highest rank.
+  /// Returns what [unmerge] needs, or null when fewer than two of the
+  /// thoughts are left.
   Merged? merge(List<String> ids, String text) {
     final trimmed = text.trim();
     final originals = [
@@ -145,6 +148,7 @@ class ThoughtStore extends ChangeNotifier {
       createdAt: newest.thought.createdAt,
       theme: newest.thought.theme,
       themeChosen: newest.thought.themeChosen,
+      rank: originals.map((o) => o.thought.rank).reduce(math.max),
     );
     for (final o in originals.reversed) {
       _thoughts.removeAt(o.index);
@@ -161,6 +165,34 @@ class ThoughtStore extends ChangeNotifier {
       _thoughts.insert(o.index.clamp(0, _thoughts.length), o.thought);
     }
     _changed();
+  }
+
+  /// Puts the thoughts [ids] in this order, highest first, by sharing out the
+  /// ranks they hold among them. The other thoughts keep theirs.
+  void reorder(List<String> ids) {
+    final indices = [
+      for (final id in ids)
+        if (_thoughts.indexWhere((t) => t.id == id) case final i when i != -1)
+          i,
+    ];
+    final ranks = [for (final i in indices) _thoughts[i].rank]
+      ..sort((a, b) => b.compareTo(a));
+    var changed = false;
+    for (final (place, i) in indices.indexed) {
+      final thought = _thoughts[i];
+      if (thought.rank == ranks[place]) continue;
+      _thoughts[i] = Thought(
+        id: thought.id,
+        text: thought.text,
+        images: thought.images,
+        createdAt: thought.createdAt,
+        theme: thought.theme,
+        themeChosen: thought.themeChosen,
+        rank: ranks[place],
+      );
+      changed = true;
+    }
+    if (changed) _changed();
   }
 
   /// Returns the index the thought was at, to pass back to [restore].
@@ -205,6 +237,7 @@ class ThoughtStore extends ChangeNotifier {
         createdAt: thought.createdAt,
         theme: theme,
         themeChosen: chosen,
+        rank: thought.rank,
       );
 
   /// Completes once every change made so far has been written.

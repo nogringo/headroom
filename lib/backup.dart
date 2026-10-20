@@ -120,6 +120,7 @@ class Backup {
           createdAt: t.createdAt,
           theme: t.theme,
           themeChosen: t.themeChosen,
+          rank: t.rank,
         ),
     ]);
     _listSettings.restoreThemeOrder(contents.themeOrder);

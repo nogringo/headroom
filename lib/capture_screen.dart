@@ -18,6 +18,7 @@ import 'l10n/app_localizations.dart';
 import 'list_settings.dart';
 import 'report_error.dart';
 import 'sidebar.dart';
+import 'sliver_animated_reorderable_list.dart';
 import 'theme.dart';
 import 'theme_name_dialog.dart';
 import 'theme_names.dart';
@@ -90,7 +91,7 @@ class CaptureScreen extends StatefulWidget {
 class _CaptureScreenState extends State<CaptureScreen> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
-  var _listKey = GlobalKey<SliverAnimatedListState>();
+  var _listKey = GlobalKey<SliverAnimatedReorderableListState>();
   final _scaffold = GlobalKey<ScaffoldState>();
   final _scroll = ScrollController();
   late final AppLifecycleListener _lifecycle;
@@ -118,16 +119,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   List<_Row> _currentRows() {
     final theme = _theme;
-    return _rowsOf(
-      theme == null
-          ? _store.thoughts
-          : _store.thoughts.where(
-              (t) =>
-                  (t.theme ?? '') == theme ||
-                  (t.theme == null && _notedHere.contains(t.id)),
-            ),
-      withHeadings: theme == null,
-    );
+    if (theme == null) return _rowsOf(_store.thoughts, withHeadings: true);
+    final thoughts = [
+      for (final t in _store.thoughts)
+        if ((t.theme ?? '') == theme ||
+            (t.theme == null && _notedHere.contains(t.id)))
+          t,
+    ];
+    // Stable, so that thoughts of equal rank stay newest first.
+    mergeSort(thoughts, compare: (a, b) => b.rank.compareTo(a.rank));
+    return _rowsOf(thoughts, withHeadings: false);
   }
 
   /// The themes the sidebar opens, in the person's order, then '' for the
@@ -295,6 +296,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
       AppLocalizations.of(context).thoughtDeleted,
       () => _store.restore(thought, index),
     );
+  }
+
+  /// Moves the thought at [from] in the open theme to [to].
+  void _move(int from, int to) {
+    // Before the store tells the list, which then has nothing to animate.
+    _rows.insert(to, _rows.removeAt(from));
+    _store.reorder([for (final row in _rows) row.thought!.id]);
   }
 
   void _merge(Merge suggestion) {
@@ -795,11 +803,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           side,
                           24 + MediaQuery.paddingOf(context).bottom,
                         ),
-                        sliver: SliverAnimatedList(
+                        sliver: SliverAnimatedReorderableList(
                           key: _listKey,
                           initialItemCount: _rows.length,
-                          itemBuilder: (context, index, animation) =>
-                              _buildRow(_rows[index], animation),
+                          itemBuilder: (context, index, animation, moves) =>
+                              _buildRow(_rows[index], animation, moves),
+                          onReorderItem: _theme == null ? null : _move,
                         ),
                       ),
                     ],
@@ -813,7 +822,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  Widget _buildRow(_Row row, Animation<double> animation) {
+  Widget _buildRow(
+    _Row row,
+    Animation<double> animation, [
+    ItemMoves moves = ItemMoves.none,
+  ]) {
     final eased = animation.drive(CurveTween(curve: Curves.easeOutCubic));
     final thought = row.thought;
     return SizeTransition(
@@ -822,16 +835,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
         opacity: eased,
         child: thought == null
             ? _Heading(day: row.day)
-            : _buildThought(thought),
+            : _buildThought(thought, moves),
       ),
     );
   }
 
-  Widget _buildThought(Thought thought) {
+  Widget _buildThought(Thought thought, ItemMoves moves) {
     final l10n = AppLocalizations.of(context);
     return Semantics(
       customSemanticsActions: {
         CustomSemanticsAction(label: l10n.delete): () => _remove(thought),
+        ...moves.actions,
       },
       child: ClipRRect(
         borderRadius: paperRadius,
@@ -844,46 +858,48 @@ class _CaptureScreenState extends State<CaptureScreen> {
             alignment: AlignmentDirectional.centerEnd,
           ),
           onDismissed: (_) => _remove(thought, swiped: true),
-          child: _ThoughtTile(
-            text: thought.text,
-            images: _imagesOf(thought),
-            createdAt: thought.createdAt,
-            withDay: _theme != null,
-            themeButton: switch (thought.theme) {
-              final theme? when _theme == null => _ThemeMenu(
-                theme: theme,
-                chosen: thought.themeChosen,
-                themes: _themes(),
-                aiSorts: _tidier.settings != null,
-                onChoose: (theme) => _store.chooseTheme(thought.id, theme),
-                // Else the tooltip ends up on the thought rather than here.
-                builder: (context, toggle) => MergeSemantics(
-                  child: Tooltip(
-                    message: l10n.changeTheme,
-                    child: TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: Theme.of(context)
-                            .colorScheme
-                            .onSurfaceVariant,
-                        textStyle: Theme.of(context).textTheme.bodySmall,
-                        // Lines the label up with the text above.
-                        padding: const EdgeInsetsDirectional.only(end: 8),
-                        minimumSize: const Size(0, 28),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          child: moves.draggable(
+            _ThoughtTile(
+              text: thought.text,
+              images: _imagesOf(thought),
+              createdAt: thought.createdAt,
+              withDay: _theme != null,
+              themeButton: switch (thought.theme) {
+                final theme? when _theme == null => _ThemeMenu(
+                  theme: theme,
+                  chosen: thought.themeChosen,
+                  themes: _themes(),
+                  aiSorts: _tidier.settings != null,
+                  onChoose: (theme) => _store.chooseTheme(thought.id, theme),
+                  // Else the tooltip ends up on the thought rather than here.
+                  builder: (context, toggle) => MergeSemantics(
+                    child: Tooltip(
+                      message: l10n.changeTheme,
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                          textStyle: Theme.of(context).textTheme.bodySmall,
+                          // Lines the label up with the text above.
+                          padding: const EdgeInsetsDirectional.only(end: 8),
+                          minimumSize: const Size(0, 28),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: toggle,
+                        icon: const Icon(Icons.label_outline_rounded, size: 14),
+                        label: Text(theme),
                       ),
-                      onPressed: toggle,
-                      icon: const Icon(Icons.label_outline_rounded, size: 14),
-                      label: Text(theme),
                     ),
                   ),
                 ),
-              ),
-              _ => null,
-            },
-            onTap: () => _edit(thought),
-            onImageTap: (index) => _view(thought.images, index),
-            onImageCopy: (index) => _copyImage(thought.images[index]),
-            onDelete: () => _remove(thought),
+                _ => null,
+              },
+              onTap: () => _edit(thought),
+              onImageTap: (index) => _view(thought.images, index),
+              onImageCopy: (index) => _copyImage(thought.images[index]),
+              onDelete: () => _remove(thought),
+            ),
           ),
         ),
       ),
@@ -1100,104 +1116,109 @@ class _ThoughtTileState extends State<_ThoughtTile> {
           canRequestFocus: false,
           skipTraversal: true,
           onFocusChange: (focused) => setState(() => _focused = focused),
-          child: InkWell(
-            borderRadius: paperRadius,
-            onTap: widget.onTap,
-            onHover: (hovered) => setState(() => _hovered = hovered),
-            onFocusChange: onFocusChange,
-            child: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(
-                _inset,
-                10,
-                deleteButton ? 6 : _inset,
-                10,
-              ),
-              child: Row(
-                // The time sits on the first line of text, or at the top of an image.
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (text.isNotEmpty)
-                          Text(text, style: theme.textTheme.bodyLarge),
-                        if (images.isNotEmpty)
-                          Padding(
-                            padding: EdgeInsets.only(
-                              top: text.isEmpty ? 2 : 10,
-                            ),
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                for (final (index, image) in images.indexed)
-                                  _ImageThumbnail(
-                                    image: image,
-                                    label: _imageLabel(
-                                      AppLocalizations.of(context),
-                                      index,
-                                      images.length,
-                                    ),
-                                    maxHeight: images.length == 1 ? 160 : 112,
-                                    onTap: () => widget.onImageTap(index),
-                                    onCopy: () => widget.onImageCopy(index),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        if (widget.themeButton case final themeButton?)
-                          Padding(
-                            padding: EdgeInsets.only(
-                              top: images.isEmpty ? 2 : 8,
-                            ),
-                            child: themeButton,
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  if (deleteButton)
-                    Stack(
-                      alignment: AlignmentDirectional.centerEnd,
-                      children: [
-                        AnimatedOpacity(
-                          opacity: revealed ? 0 : 1,
-                          duration: fade,
-                          child: Padding(
-                            padding: const EdgeInsetsDirectional.only(
-                              end: _inset - 6,
-                            ),
-                            child: time,
-                          ),
-                        ),
-                        // A touch screen has no hover: a touch on the hidden
-                        // button opens the thought, as anywhere else on it.
-                        _PointerGate(
-                          open: revealed,
-                          child: AnimatedOpacity(
-                            opacity: revealed ? 1 : 0,
-                            duration: fade,
-                            alwaysIncludeSemantics: true,
-                            child: IconButton(
-                              constraints: const BoxConstraints.tightFor(
-                                width: 32,
-                                height: 28,
+          // Rather than InkWell's onHover, which goes quiet once the tile has
+          // moved in the tree, as it does while dragged.
+          child: MouseRegion(
+            onEnter: (_) => setState(() => _hovered = true),
+            onExit: (_) => setState(() => _hovered = false),
+            child: InkWell(
+              borderRadius: paperRadius,
+              onTap: widget.onTap,
+              onFocusChange: onFocusChange,
+              child: Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(
+                  _inset,
+                  10,
+                  deleteButton ? 6 : _inset,
+                  10,
+                ),
+                child: Row(
+                  // The time sits on the first line of text, or at the top of an image.
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (text.isNotEmpty)
+                            Text(text, style: theme.textTheme.bodyLarge),
+                          if (images.isNotEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: text.isEmpty ? 2 : 10,
                               ),
-                              padding: EdgeInsets.zero,
-                              iconSize: 18,
-                              tooltip: AppLocalizations.of(context).delete,
-                              onPressed: widget.onDelete,
-                              icon: const Icon(Icons.delete_outline_rounded),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (final (index, image) in images.indexed)
+                                    _ImageThumbnail(
+                                      image: image,
+                                      label: _imageLabel(
+                                        AppLocalizations.of(context),
+                                        index,
+                                        images.length,
+                                      ),
+                                      maxHeight: images.length == 1 ? 160 : 112,
+                                      onTap: () => widget.onImageTap(index),
+                                      onCopy: () => widget.onImageCopy(index),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          if (widget.themeButton case final themeButton?)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                top: images.isEmpty ? 2 : 8,
+                              ),
+                              child: themeButton,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    if (deleteButton)
+                      Stack(
+                        alignment: AlignmentDirectional.centerEnd,
+                        children: [
+                          AnimatedOpacity(
+                            opacity: revealed ? 0 : 1,
+                            duration: fade,
+                            child: Padding(
+                              padding: const EdgeInsetsDirectional.only(
+                                end: _inset - 6,
+                              ),
+                              child: time,
                             ),
                           ),
-                        ),
-                      ],
-                    )
-                  else
-                    time,
-                ],
+                          // A touch screen has no hover: a touch on the hidden
+                          // button opens the thought, as anywhere else on it.
+                          _PointerGate(
+                            open: revealed,
+                            child: AnimatedOpacity(
+                              opacity: revealed ? 1 : 0,
+                              duration: fade,
+                              alwaysIncludeSemantics: true,
+                              child: IconButton(
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 32,
+                                  height: 28,
+                                ),
+                                padding: EdgeInsets.zero,
+                                iconSize: 18,
+                                tooltip: AppLocalizations.of(context).delete,
+                                onPressed: widget.onDelete,
+                                icon: const Icon(Icons.delete_outline_rounded),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      time,
+                  ],
+                ),
               ),
             ),
           ),

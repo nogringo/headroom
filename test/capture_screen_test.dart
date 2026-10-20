@@ -11,6 +11,7 @@ import 'package:headroom/clipboard_image_io.dart' show writeClipboardImage;
 import 'package:headroom/list_settings.dart';
 import 'package:headroom/main.dart';
 import 'package:headroom/sidebar.dart';
+import 'package:headroom/sliver_animated_reorderable_list.dart';
 import 'package:headroom/thought.dart';
 import 'package:headroom/thought_store.dart';
 import 'package:headroom/tidier.dart';
@@ -109,12 +110,12 @@ void main() {
   );
 
   Finder listedImage() => find.descendant(
-    of: find.byType(SliverAnimatedList),
+    of: find.byType(SliverAnimatedReorderableList),
     matching: find.byType(Image),
   );
 
   Finder listed(String text) => find.descendant(
-    of: find.byType(SliverAnimatedList),
+    of: find.byType(SliverAnimatedReorderableList),
     matching: find.text(text),
   );
 
@@ -125,6 +126,21 @@ void main() {
       find.descendant(of: find.byType(AlertDialog), matching: find.text(text));
 
   Finder menuItem(String text) => find.widgetWithText(MenuItemButton, text);
+
+  /// Drags [gesture] [dy] down, drifting [dx] across, then lets go.
+  Future<void> drag(
+    WidgetTester tester,
+    TestGesture gesture,
+    double dy, {
+    double dx = 0,
+  }) async {
+    for (var i = 0; i < 10; i++) {
+      await gesture.moveBy(Offset(dx / 10, dy / 10));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
 
   Future<void> pressPaste(WidgetTester tester) async {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
@@ -1228,7 +1244,7 @@ void main() {
       Thought(id: '1', text: 'Buy bread', createdAt: now, theme: 'Errands'),
     ]);
     Finder themeOf(String theme) => find.descendant(
-      of: find.byType(SliverAnimatedList),
+      of: find.byType(SliverAnimatedReorderableList),
       matching: find.widgetWithText(TextButton, theme),
     );
     expect(themeOf('Work'), findsOneWidget);
@@ -1342,19 +1358,6 @@ void main() {
       return reopened.themeOrder;
     }
 
-    Future<void> drag(
-      WidgetTester tester,
-      TestGesture gesture,
-      double dy,
-    ) async {
-      for (var i = 0; i < 10; i++) {
-        await gesture.moveBy(Offset(0, dy / 10));
-        await tester.pump();
-      }
-      await gesture.up();
-      await tester.pumpAndSettle();
-    }
-
     testWidgets('moves a theme dragged with a mouse or after a long press', (
       tester,
     ) async {
@@ -1453,6 +1456,256 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(await savedOrder(), ['Work', 'Shopping', 'Études']);
+    });
+  });
+
+  group("a theme's thoughts", () {
+    Future<void> pumpTheme(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final now = DateTime.now();
+      DateTime ago(int minutes) => now.subtract(Duration(minutes: minutes));
+      await pumpApp(tester, [
+        Thought(id: '4', text: 'Fix the build', createdAt: now, theme: 'Work'),
+        Thought(
+          id: '3',
+          text: 'Buy bread',
+          createdAt: ago(1),
+          theme: 'Errands',
+        ),
+        Thought(
+          id: '2',
+          text: 'Post the letter',
+          createdAt: ago(2),
+          theme: 'Errands',
+        ),
+        Thought(
+          id: '1',
+          text: 'Water the plants',
+          createdAt: ago(3),
+          theme: 'Errands',
+        ),
+      ]);
+      await tester.tap(inSidebar('Errands'));
+      await tester.pumpAndSettle();
+    }
+
+    List<String> order(WidgetTester tester) {
+      final texts = [
+        'Call mum',
+        'Fix the build',
+        'Buy bread',
+        'Post the letter',
+        'Water the plants',
+      ].where((text) => listed(text).evaluate().isNotEmpty);
+      return texts.toList()..sort(
+        (a, b) => tester
+            .getTopLeft(listed(a))
+            .dy
+            .compareTo(tester.getTopLeft(listed(b)).dy),
+      );
+    }
+
+    Future<List<String>> savedOrder() async {
+      await store.flush();
+      final errands = storage.saved.where((t) => t.theme == 'Errands').toList()
+        ..sort((a, b) => b.rank.compareTo(a.rank));
+      return [for (final t in errands) t.text];
+    }
+
+    Future<TestGesture> hoveringMouse(WidgetTester tester, String text) async {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: tester.getCenter(listed(text)));
+      await tester.pump();
+      return mouse;
+    }
+
+    testWidgets('move when dragged with a mouse or after a long press', (
+      tester,
+    ) async {
+      await pumpTheme(tester);
+      expect(order(tester), [
+        'Buy bread',
+        'Post the letter',
+        'Water the plants',
+      ]);
+
+      final mouse = await hoveringMouse(tester, 'Water the plants');
+      await mouse.down(tester.getCenter(listed('Water the plants')));
+      // Across first, as a hand does, which must not swipe it away.
+      await mouse.moveBy(const Offset(4, 0));
+      await tester.pump();
+      await drag(tester, mouse, -200, dx: 30);
+      expect(order(tester), [
+        'Water the plants',
+        'Buy bread',
+        'Post the letter',
+      ]);
+
+      final finger = await tester.startGesture(
+        tester.getCenter(listed('Buy bread')),
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await drag(tester, finger, 200);
+      expect(order(tester), [
+        'Water the plants',
+        'Post the letter',
+        'Buy bread',
+      ]);
+      expect(await savedOrder(), [
+        'Water the plants',
+        'Post the letter',
+        'Buy bread',
+      ]);
+      expect(store.thoughts, hasLength(4));
+    });
+
+    testWidgets('a new thought comes in at the top', (tester) async {
+      await pumpTheme(tester);
+      store.reorder(['1', '3', '2']);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'Call mum');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pumpAndSettle();
+      store.chooseTheme(store.thoughts.first.id, 'Errands');
+      await tester.pumpAndSettle();
+
+      expect(order(tester), [
+        'Call mum',
+        'Water the plants',
+        'Buy bread',
+        'Post the letter',
+      ]);
+    });
+
+    testWidgets('keep to their day in the list of every thought', (
+      tester,
+    ) async {
+      await pumpTheme(tester);
+      store.reorder(['1', '3', '2']);
+      await tester.tap(inSidebar('All'));
+      await tester.pumpAndSettle();
+
+      final mouse = await hoveringMouse(tester, 'Water the plants');
+      await mouse.down(tester.getCenter(listed('Water the plants')));
+      await drag(tester, mouse, -200);
+
+      expect(order(tester), [
+        'Fix the build',
+        'Buy bread',
+        'Post the letter',
+        'Water the plants',
+      ]);
+    });
+
+    testWidgets('a finger still swipes one away', (tester) async {
+      await pumpTheme(tester);
+
+      await tester.drag(listed('Post the letter'), const Offset(-600, 0));
+      await tester.pumpAndSettle();
+
+      expect(listed('Post the letter'), findsNothing);
+      expect(store.thoughts, hasLength(3));
+    });
+
+    testWidgets('a delete button goes away with the mouse', (tester) async {
+      await pumpTheme(tester);
+      double opacity(String text) => tester
+          .widget<AnimatedOpacity>(
+            find
+                .ancestor(
+                  of: find.descendant(
+                    of: find.ancestor(
+                      of: listed(text),
+                      matching: find.byType(Dismissible),
+                    ),
+                    matching: find.byTooltip('Delete'),
+                  ),
+                  matching: find.byType(AnimatedOpacity),
+                )
+                .first,
+          )
+          .opacity;
+
+      final mouse = await hoveringMouse(tester, 'Buy bread');
+      await tester.pumpAndSettle();
+      expect(opacity('Buy bread'), 1);
+
+      await mouse.moveTo(tester.getCenter(listed('Post the letter')));
+      await tester.pumpAndSettle();
+      expect(opacity('Buy bread'), 0);
+      expect(opacity('Post the letter'), 1);
+
+      // Moved, it leaves the list for a while, and comes back under the mouse.
+      await mouse.down(tester.getCenter(listed('Post the letter')));
+      await drag(tester, mouse, -100);
+      expect(order(tester).first, 'Post the letter');
+      await mouse.moveTo(tester.getCenter(listed('Water the plants')));
+      await tester.pumpAndSettle();
+      expect(opacity('Post the letter'), 0);
+      expect(opacity('Water the plants'), 1);
+    }, variant: TargetPlatformVariant.desktop());
+
+    testWidgets('a click that wobbles still opens the thought', (tester) async {
+      await pumpTheme(tester);
+
+      final mouse = await hoveringMouse(tester, 'Post the letter');
+      await mouse.down(tester.getCenter(listed('Post the letter')));
+      await mouse.moveBy(const Offset(0, 4));
+      await mouse.up();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(await savedOrder(), [
+        'Buy bread',
+        'Post the letter',
+        'Water the plants',
+      ]);
+    });
+
+    testWidgets('a screen reader or the keyboard moves a thought', (
+      tester,
+    ) async {
+      await pumpTheme(tester);
+
+      Focus.of(tester.element(listed('Buy bread'))).requestFocus();
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pumpAndSettle();
+      expect(order(tester), [
+        'Post the letter',
+        'Buy bread',
+        'Water the plants',
+      ]);
+      expect(
+        Focus.of(tester.element(listed('Buy bread'))).hasPrimaryFocus,
+        isTrue,
+      );
+
+      tester.semantics.customAction(
+        find.semantics.byPredicate(
+          (node) =>
+              node.label.startsWith('Water the plants') &&
+              node.getSemanticsData().hasAction(SemanticsAction.customAction),
+        ),
+        const CustomSemanticsAction(label: 'Move up'),
+      );
+      await tester.pumpAndSettle();
+      expect(order(tester), [
+        'Post the letter',
+        'Water the plants',
+        'Buy bread',
+      ]);
+      expect(await savedOrder(), [
+        'Post the letter',
+        'Water the plants',
+        'Buy bread',
+      ]);
     });
   });
 

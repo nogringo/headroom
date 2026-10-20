@@ -55,4 +55,15 @@ void main() {
     expect(Thought.fromJson(byAi.toJson()).themeChosen, isFalse);
     expect(Thought.fromJson(chosen.toJson()).themeChosen, isTrue);
   });
+
+  test('ranks by its date, and writes a rank only once moved', () {
+    final noted = DateTime.utc(2026, 10, 20, 9);
+    final unmoved = Thought(id: '1', text: 'Note', createdAt: noted);
+    final moved = Thought(id: '2', text: 'Note', createdAt: noted, rank: 7);
+
+    expect(unmoved.rank, noted.microsecondsSinceEpoch);
+    expect(unmoved.toJson(), isNot(contains('rank')));
+    expect(Thought.fromJson(unmoved.toJson()).rank, unmoved.rank);
+    expect(Thought.fromJson(moved.toJson()).rank, 7);
+  });
 }

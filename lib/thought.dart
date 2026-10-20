@@ -1,12 +1,13 @@
 class Thought {
-  const Thought({
+  Thought({
     required this.id,
     required this.text,
     this.images = const [],
     required this.createdAt,
     this.theme,
     this.themeChosen = false,
-  });
+    int? rank,
+  }) : rank = rank ?? createdAt.microsecondsSinceEpoch;
 
   factory Thought.fromJson(Map<String, dynamic> json) => Thought(
     id: json['id'] as String,
@@ -19,6 +20,7 @@ class Thought {
     createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
     theme: json['theme'] as String?,
     themeChosen: json['themeChosen'] == true,
+    rank: json['rank'] as int?,
   );
 
   final String id;
@@ -36,6 +38,10 @@ class Thought {
   /// Whether the person chose [theme], which the AI then leaves alone.
   final bool themeChosen;
 
+  /// Its place in its theme, which lists the highest first. The time it was
+  /// noted, in microseconds, until the person moves it.
+  final int rank;
+
   Map<String, Object> toJson() => {
     'id': id,
     'text': text,
@@ -43,5 +49,6 @@ class Thought {
     'createdAt': createdAt.toUtc().toIso8601String(),
     if (theme case final String theme) 'theme': theme,
     if (themeChosen) 'themeChosen': true,
+    if (rank != createdAt.microsecondsSinceEpoch) 'rank': rank,
   };
 }

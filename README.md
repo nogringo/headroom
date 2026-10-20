@@ -9,7 +9,7 @@ Headroom is a sticky note for the things that clutter your mind: errands, ideas,
 - **Write and move on.** Type on the note and press Enter. On a computer, Shift+Enter starts a new line, and `/` brings you back to the note from anywhere in the app, as does Cmd+N (Ctrl+N on Windows and Linux) outside a browser. Thoughts are listed under the day they were noted: Today, Yesterday, then the weekday and date.
 - **Images.** Paste one or several images into a thought with Cmd/Ctrl+V, or with "Paste image" in the field's menu. Tap an image to see it full screen, go through a thought's images with the arrow keys, and copy one back out with Cmd/Ctrl+C, a right-click or a long press.
 - **Edit and delete.** Tap a thought to edit it. Swipe it away on a touch screen, or use the delete button that shows on hover on a computer. Undo brings it back.
-- **Themes.** With AI tidying on, each new thought gets a theme, and a sidebar opens one theme at a time so the rest of the list stays out of sight. The app reopens on the theme you left. The list of every thought shows each one's theme under it. When the AI files a thought in the wrong place, tap that theme, or open the thought, and pick another: the AI leaves it there and sorts similar thoughts the same way. The pencil beside the open theme renames it, and giving it another theme's name merges the two. Drag a theme to put it elsewhere in the sidebar, after a long press on a touch screen. New themes come after the ones you placed. Themes work without the AI too.
+- **Themes.** With AI tidying on, each new thought gets a theme, and a sidebar opens one theme at a time so the rest of the list stays out of sight. The app reopens on the theme you left. The list of every thought shows each one's theme under it. When the AI files a thought in the wrong place, tap that theme, or open the thought, and pick another: the AI leaves it there and sorts similar thoughts the same way. The pencil beside the open theme renames it, and giving it another theme's name merges the two. Drag a theme to put it elsewhere in the sidebar, after a long press on a touch screen. New themes come after the ones you placed. The thoughts of an open theme move the same way, and a new one arrives at the top. The list of every thought stays sorted by day. Themes work without the AI too.
 - **Clean-up suggestions.** The AI spots thoughts that repeat each other and writes the one that would replace them, and flags thoughts that are out of date, such as an appointment whose day has passed. Nothing changes until you accept, and a declined suggestion is not offered again.
 - **Backup.** Save a copy of every thought and image as a zip, wherever you like, and restore it on any device. A restore adds the thoughts that are missing and deletes nothing.
 - **In English and French.**
@@ -50,7 +50,7 @@ Images are named after a SHA-256 of their content, so the same image pasted twic
 
 A backup is a zip named `headroom-YYYY-MM-DD.zip`, laid out like the storage:
 
-- `thoughts.json`: every thought, with its text, images, date and theme, and whether you chose that theme.
+- `thoughts.json`: every thought, with its text, images, date and theme, whether you chose that theme, and its place in it once you moved it.
 - `images/`: the images, with an extension so they open from the unzipped copy.
 - `ai.json`: the AI's address and model. Never the API key, which has no place in a file left on a cloud drive.
 - `tidy.json`: the clean-ups you declined.

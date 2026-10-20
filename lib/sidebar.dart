@@ -1,10 +1,10 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import 'focus_ring.dart';
 import 'l10n/app_localizations.dart';
+import 'reordering.dart';
 import 'theme.dart';
 
 /// Opens every thought or a single theme's, which it can rename and move,
@@ -83,7 +83,7 @@ class Sidebar extends StatelessWidget {
       return ReorderableDelayedDragStartListener(
         key: ValueKey(theme),
         index: index,
-        child: _MouseDragStartListener(
+        child: MouseDragStartListener(
           index: index,
           child: CallbackShortcuts(
             bindings: {
@@ -117,16 +117,7 @@ class Sidebar extends StatelessWidget {
             ),
             footer: themes.contains('') ? entry('', l10n.noTheme) : null,
             onReorderItem: move,
-            proxyDecorator: (child, _, animation) => AnimatedBuilder(
-              animation: animation,
-              builder: (context, child) => Material(
-                color: scheme.surface,
-                borderRadius: paperRadius,
-                elevation: Curves.easeOut.transform(animation.value) * 4,
-                child: child,
-              ),
-              child: child,
-            ),
+            proxyDecorator: liftDragged,
             children: [
               for (final (index, theme) in named.indexed) movable(index, theme),
             ],
@@ -248,42 +239,4 @@ class _Entry extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Starts moving a theme dragged with a mouse once it has gone as far as a
-/// finger would, so that a click that wobbles still opens the theme. Touch
-/// keeps the long press, which leaves a swipe to scroll.
-class _MouseDragStartListener extends ReorderableDragStartListener {
-  const _MouseDragStartListener({required super.index, required super.child});
-
-  @override
-  MultiDragGestureRecognizer createRecognizer() =>
-      _MouseDragRecognizer(debugOwner: this);
-}
-
-class _MouseDragRecognizer extends MultiDragGestureRecognizer {
-  _MouseDragRecognizer({super.debugOwner})
-    : super(supportedDevices: {PointerDeviceKind.mouse});
-
-  @override
-  MultiDragPointerState createNewPointerState(PointerDownEvent event) =>
-      _MouseDragState(event.position, event.kind, gestureSettings);
-
-  @override
-  String get debugDescription => 'mouse drag';
-}
-
-class _MouseDragState extends MultiDragPointerState {
-  _MouseDragState(super.initialPosition, super.kind, super.gestureSettings);
-
-  @override
-  void checkForResolutionAfterMove() {
-    if (pendingDelta!.distance > kTouchSlop) {
-      resolve(GestureDisposition.accepted);
-    }
-  }
-
-  @override
-  void accepted(GestureMultiDragStartCallback starter) =>
-      starter(initialPosition);
 }
