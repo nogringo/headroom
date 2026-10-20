@@ -158,6 +158,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
     // Turns "Today" into "Yesterday" at midnight.
     _clock = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
     _store.addListener(_syncRows);
+    // Global rather than Shortcuts: a click elsewhere leaves the focus above
+    // this screen, out of their reach.
+    HardwareKeyboard.instance.addHandler(_onKey);
     final theme = _theme;
     if (theme != null &&
         !_store.thoughts.any((t) => (t.theme ?? '') == theme)) {
@@ -167,6 +170,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
     _store.removeListener(_syncRows);
     _clock.cancel();
     _lifecycle.dispose();
@@ -178,6 +182,31 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   void _refocus() {
     if (ModalRoute.of(context)?.isCurrent ?? true) _inputFocus.requestFocus();
+  }
+
+  /// Cmd+N (Ctrl+N off Apple devices), or "/" outside the field, goes back
+  /// to it. Browsers keep Cmd+N and Ctrl+N for themselves.
+  bool _onKey(KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return false;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    final command = switch (Theme.of(context).platform) {
+      TargetPlatform.macOS || TargetPlatform.iOS => keyboard.isMetaPressed,
+      _ => keyboard.isControlPressed,
+    };
+    final newThought = event.logicalKey == LogicalKeyboardKey.keyN && command;
+    final slash =
+        event.character == '/' &&
+        !_inputFocus.hasFocus &&
+        !keyboard.isMetaPressed &&
+        !keyboard.isControlPressed &&
+        !keyboard.isAltPressed;
+    if (!newThought && !slash) return false;
+    _scaffold.currentState?.closeDrawer();
+    _inputFocus.requestFocus();
+    return true;
   }
 
   void _capture() {

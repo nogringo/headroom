@@ -6,7 +6,7 @@ Headroom is a sticky note for the things that clutter your mind: errands, ideas,
 
 ## Features
 
-- **Write and move on.** Type on the note and press Enter. On a computer, Shift+Enter starts a new line. Thoughts are listed under the day they were noted: Today, Yesterday, then the weekday and date.
+- **Write and move on.** Type on the note and press Enter. On a computer, Shift+Enter starts a new line, and `/` brings you back to the note from anywhere in the app, as does Cmd+N (Ctrl+N on Windows and Linux) outside a browser. Thoughts are listed under the day they were noted: Today, Yesterday, then the weekday and date.
 - **Images.** Paste one or several images into a thought with Cmd/Ctrl+V, or with "Paste image" in the field's menu. Tap an image to see it full screen, go through a thought's images with the arrow keys, and copy one back out with Cmd/Ctrl+C, a right-click or a long press.
 - **Edit and delete.** Tap a thought to edit it. Swipe it away on a touch screen, or use the delete button that shows on hover on a computer. Undo brings it back.
 - **Themes.** With AI tidying on, each new thought gets a theme, and a sidebar opens one theme at a time so the rest of the list stays out of sight. The app reopens on the theme you left. When the AI files a thought in the wrong place, pick its theme yourself in the edit dialog: the AI leaves it there and sorts similar thoughts the same way. The pencil beside the open theme renames it, and giving it another theme's name merges the two. Drag a theme to put it elsewhere in the sidebar, after a long press on a touch screen. New themes come after the ones you placed. Themes work without the AI too.

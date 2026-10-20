@@ -267,6 +267,101 @@ void main() {
     expect(store.thoughts, isEmpty);
   }, variant: TargetPlatformVariant.desktop());
 
+  group('back to the field', () {
+    bool fieldFocused(WidgetTester tester) => tester
+        .widget<TextField>(find.byType(TextField).first)
+        .focusNode!
+        .hasFocus;
+
+    Future<void> leaveField(WidgetTester tester) async {
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(fieldFocused(tester), isFalse);
+    }
+
+    Future<void> press(
+      WidgetTester tester,
+      LogicalKeyboardKey key, {
+      LogicalKeyboardKey? modifier,
+      String? character,
+    }) async {
+      if (modifier != null) await tester.sendKeyDownEvent(modifier);
+      await tester.sendKeyEvent(key, character: character);
+      if (modifier != null) await tester.sendKeyUpEvent(modifier);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('with Ctrl+N or /', (tester) async {
+      await pumpApp(tester);
+
+      await leaveField(tester);
+      await press(
+        tester,
+        LogicalKeyboardKey.keyN,
+        modifier: LogicalKeyboardKey.controlLeft,
+      );
+      expect(fieldFocused(tester), isTrue);
+
+      await leaveField(tester);
+      await press(tester, LogicalKeyboardKey.slash, character: '/');
+      expect(fieldFocused(tester), isTrue);
+      expect(captureField(tester).controller!.text, isEmpty);
+    });
+
+    testWidgets('with Cmd+N on a Mac', (tester) async {
+      await pumpApp(tester);
+
+      await leaveField(tester);
+      await press(
+        tester,
+        LogicalKeyboardKey.keyN,
+        modifier: LogicalKeyboardKey.controlLeft,
+      );
+      expect(fieldFocused(tester), isFalse);
+      await press(
+        tester,
+        LogicalKeyboardKey.keyN,
+        modifier: LogicalKeyboardKey.metaLeft,
+      );
+      expect(fieldFocused(tester), isTrue);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+    testWidgets('from the open drawer, which closes', (tester) async {
+      await pumpApp(tester, [
+        Thought(
+          id: '1',
+          text: 'Buy bread',
+          createdAt: DateTime.now(),
+          theme: 'Errands',
+        ),
+      ]);
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+
+      await press(tester, LogicalKeyboardKey.slash, character: '/');
+
+      expect(find.byType(Drawer), findsNothing);
+      expect(fieldFocused(tester), isTrue);
+    });
+
+    testWidgets('not from a dialog', (tester) async {
+      await pumpApp(tester, [
+        Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+      ]);
+      await tester.tap(find.text('Buy bread'));
+      await tester.pumpAndSettle();
+
+      await press(
+        tester,
+        LogicalKeyboardKey.keyN,
+        modifier: LogicalKeyboardKey.controlLeft,
+      );
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(fieldFocused(tester), isFalse);
+    });
+  });
+
   testWidgets('touch keyboards keep their send key', (tester) async {
     await pumpApp(tester);
 
