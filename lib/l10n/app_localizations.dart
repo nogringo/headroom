@@ -254,6 +254,36 @@ abstract class AppLocalizations {
   /// **'Couldn\'t copy the image.'**
   String get imageNotCopied;
 
+  /// Item of a thought's right-click menu that opens it to edit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get edit;
+
+  /// Item of a thought's right-click menu that copies its text, as written rather than its title, to the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy text'**
+  String get copyText;
+
+  /// Shown when copying a thought's text from its menu failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t copy the text.'**
+  String get textNotCopied;
+
+  /// Item of a theme's right-click menu in the sidebar, and its accessibility action. Takes the theme off its thoughts, which are kept.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete theme'**
+  String get deleteTheme;
+
+  /// Snackbar message after deleting a theme, with Undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme deleted. Its thoughts stay.'**
+  String get themeDeleted;
+
   /// Sidebar entry that lists every thought under the day it was noted.
   ///
   /// In en, this message translates to:

@@ -164,6 +164,33 @@ void main() {
       expect(storage.saved.first.themes, ['Shopping']);
     });
 
+    test('takes a theme off its thoughts, and gives it back', () async {
+      store
+        ..add('Buy milk')
+        ..add('Buy bread');
+      final [bread, milk] = store.thoughts;
+      store
+        ..chooseThemes(bread.id, ['Errands', 'Food'])
+        ..chooseThemes(milk.id, ['Errands'])
+        ..reorder('Errands', [milk.id, bread.id]);
+      final rank = store.thoughts.last.rankIn('Errands');
+
+      final originals = store.removeTheme('Errands');
+      expect(store.thoughts.map((t) => t.themes), [
+        ['Food'],
+        <String>[],
+      ]);
+      expect(store.thoughts.last.ranks, isEmpty);
+
+      store.restoreThemes(originals);
+      await store.flush();
+      expect(storage.saved.map((t) => t.themes), [
+        ['Errands', 'Food'],
+        ['Errands'],
+      ]);
+      expect(store.thoughts.last.rankIn('Errands'), rank);
+    });
+
     test('merges thoughts into the newest and unmerges them', () async {
       store
         ..add('milk', images: ['carton'])

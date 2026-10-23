@@ -143,6 +143,38 @@ class ThoughtStore extends ChangeNotifier {
     if (changed) _changed();
   }
 
+  /// Takes [theme] off every thought, which stays. Returns the thoughts it
+  /// changed as they were, for [restoreThemes].
+  List<Thought> removeTheme(String theme) {
+    final originals = <Thought>[];
+    for (final (index, thought) in _thoughts.indexed) {
+      if (!thought.themes.contains(theme)) continue;
+      originals.add(thought);
+      _thoughts[index] = thought.copyWith(
+        themes: [
+          for (final t in thought.themes)
+            if (t != theme) t,
+        ],
+        ranks: {...thought.ranks}..remove(theme),
+      );
+    }
+    if (originals.isNotEmpty) _changed();
+    return originals;
+  }
+
+  /// Gives the thoughts a [removeTheme] changed back their themes.
+  void restoreThemes(List<Thought> originals) {
+    for (final original in originals) {
+      final index = _thoughts.indexWhere((t) => t.id == original.id);
+      if (index == -1) continue;
+      _thoughts[index] = _thoughts[index].copyWith(
+        themes: original.themes,
+        ranks: original.ranks,
+      );
+    }
+    _changed();
+  }
+
   /// Replaces the thoughts [ids] with one holding [text] and all their
   /// images and themes, with the highest rank each held in a theme. It takes
   /// the id of the newest, and no title or subtasks, which were about the

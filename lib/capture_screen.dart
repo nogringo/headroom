@@ -11,6 +11,7 @@ import 'backup.dart';
 import 'backup_dialog.dart';
 import 'clipboard_image_io.dart'
     if (dart.library.js_interop) 'clipboard_image_web.dart';
+import 'context_menu.dart';
 import 'day_label.dart';
 import 'focus_ring.dart';
 import 'image_paste.dart';
@@ -257,6 +258,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
+  Future<void> _copyText(String text) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+    } catch (error, stack) {
+      reportError(error, stack);
+      if (mounted) _showError(AppLocalizations.of(context).textNotCopied);
+    }
+  }
+
   /// Animates the list from the rows it shows to the store's: thoughts and
   /// headings that appear grow in, those that go away collapse.
   void _syncRows() {
@@ -413,7 +423,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       );
   }
 
-  /// Renames the open [theme], which joins another when it takes its name.
+  /// Renames [theme], which joins another when it takes its name.
   Future<void> _renameTheme(String theme) async {
     final name = await showDialog<String>(
       context: context,
@@ -421,10 +431,21 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
     if (name == null || name == theme) return;
     // Before the store tells the list, which then keeps the same thoughts.
-    _listSettings
-      ..theme = name
-      ..renameTheme(theme, name);
+    if (_theme == theme) _listSettings.theme = name;
+    _listSettings.renameTheme(theme, name);
     _store.renameTheme(theme, name);
+  }
+
+  /// Takes [theme] off its thoughts, which stay. It keeps its place in the
+  /// sidebar's order, for undo.
+  void _deleteTheme(String theme) {
+    final open = _theme == theme;
+    if (open) _open(null);
+    final originals = _store.removeTheme(theme);
+    _offerUndo(AppLocalizations.of(context).themeDeleted, () {
+      _store.restoreThemes(originals);
+      if (open) _open(theme);
+    });
   }
 
   void _view(List<String> names, int index) => showDialog<void>(
@@ -579,6 +600,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             selected: _theme,
             onSelect: _open,
             onRename: _renameTheme,
+            onDelete: _deleteTheme,
             onReorder: (order) => _listSettings.themeOrder = order,
             onBackup: _openBackup,
             cleaning: _tidier.cleaning,
@@ -885,75 +907,122 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   Widget _buildThought(Thought thought, ItemMoves moves) {
     final l10n = AppLocalizations.of(context);
-    return Semantics(
-      customSemanticsActions: {
-        CustomSemanticsAction(label: l10n.delete): () => _remove(thought),
-        ...moves.actions,
-      },
-      child: ClipRRect(
-        borderRadius: paperRadius,
-        child: Dismissible(
-          key: ValueKey(thought.id),
-          background: const _SwipeBackground(
-            alignment: AlignmentDirectional.centerStart,
+    final themes = _themes();
+    void chooseThemes(List<String> chosen) =>
+        _store.chooseThemes(thought.id, chosen);
+    return ContextMenu<int>(
+      menuChildren: (image, focusFirst) => [
+        if (image != null) ...[
+          _ClipboardMenuItem(
+            icon: Icons.image_outlined,
+            label: l10n.copyImage,
+            onPressed: () => _copyImage(thought.images[image]),
           ),
-          secondaryBackground: const _SwipeBackground(
-            alignment: AlignmentDirectional.centerEnd,
+          const Divider(),
+        ],
+        MenuItemButton(
+          autofocus: focusFirst,
+          leadingIcon: const Icon(Icons.edit_outlined),
+          onPressed: () => _edit(thought),
+          child: Text(l10n.edit),
+        ),
+        if (thought.text.isNotEmpty)
+          _ClipboardMenuItem(
+            icon: Icons.content_copy_rounded,
+            label: l10n.copyText,
+            onPressed: () => _copyText(thought.text),
           ),
-          onDismissed: (_) => _remove(thought, swiped: true),
-          child: moves.draggable(
-            _ThoughtTile(
-              text: thought.text,
-              title: thought.title,
-              subtasks: thought.subtasks,
-              images: _imagesOf(thought),
-              createdAt: thought.createdAt,
-              withDay: _theme != null,
-              themeButton: switch (thought.themes) {
-                final themes when themes.isNotEmpty && _theme == null =>
-                  _ThemeMenu(
-                    selected: themes,
-                    themes: _themes(),
-                    onChoose: (themes) =>
-                        _store.chooseThemes(thought.id, themes),
-                    // Else the tooltip ends up on the thought rather than here.
-                    builder: (context, toggle) => MergeSemantics(
-                      child: Tooltip(
-                        message: l10n.changeThemes,
-                        child: TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                            textStyle: Theme.of(context).textTheme.bodySmall,
-                            // Lines the label up with the text above.
-                            padding: const EdgeInsetsDirectional.only(end: 8),
-                            minimumSize: const Size(0, 28),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: toggle,
-                          icon: const Icon(
-                            Icons.label_outline_rounded,
-                            size: 14,
-                          ),
-                          label: Text(
-                            orderedThemes(
-                              themes,
-                              _listSettings.themeOrder,
-                            ).join(', '),
+        SubmenuButton(
+          leadingIcon: const Icon(Icons.label_outline_rounded),
+          menuChildren: _themeItems(
+            context,
+            selected: thought.themes,
+            themes: themes,
+            onChoose: chooseThemes,
+          ),
+          child: Text(l10n.themes),
+        ),
+        if (moves.up != null || moves.down != null) ...[
+          const Divider(),
+          ...moveMenuItems(context, up: moves.up, down: moves.down),
+        ],
+        const Divider(),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.delete_outline_rounded),
+          onPressed: () => _remove(thought),
+          child: Text(l10n.delete),
+        ),
+      ],
+      builder: (openImageMenu) => Semantics(
+        customSemanticsActions: {
+          CustomSemanticsAction(label: l10n.delete): () => _remove(thought),
+          ...moves.actions,
+        },
+        child: ClipRRect(
+          borderRadius: paperRadius,
+          child: Dismissible(
+            key: ValueKey(thought.id),
+            background: const _SwipeBackground(
+              alignment: AlignmentDirectional.centerStart,
+            ),
+            secondaryBackground: const _SwipeBackground(
+              alignment: AlignmentDirectional.centerEnd,
+            ),
+            onDismissed: (_) => _remove(thought, swiped: true),
+            child: moves.draggable(
+              _ThoughtTile(
+                text: thought.text,
+                title: thought.title,
+                subtasks: thought.subtasks,
+                images: _imagesOf(thought),
+                createdAt: thought.createdAt,
+                withDay: _theme != null,
+                themeButton: switch (thought.themes) {
+                  final selected when selected.isNotEmpty && _theme == null =>
+                    _ThemeMenu(
+                      selected: selected,
+                      themes: themes,
+                      onChoose: chooseThemes,
+                      // Else the tooltip ends up on the thought rather than here.
+                      builder: (context, toggle) => MergeSemantics(
+                        child: Tooltip(
+                          message: l10n.changeThemes,
+                          child: TextButton.icon(
+                            style: TextButton.styleFrom(
+                              foregroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              textStyle: Theme.of(context).textTheme.bodySmall,
+                              // Lines the label up with the text above.
+                              padding: const EdgeInsetsDirectional.only(end: 8),
+                              minimumSize: const Size(0, 28),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: toggle,
+                            icon: const Icon(
+                              Icons.label_outline_rounded,
+                              size: 14,
+                            ),
+                            label: Text(
+                              orderedThemes(
+                                selected,
+                                _listSettings.themeOrder,
+                              ).join(', '),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                _ => null,
-              },
-              onTap: () => _edit(thought),
-              onToggleSubtask: (index) =>
-                  _store.toggleSubtask(thought.id, index),
-              onImageTap: (index) => _view(thought.images, index),
-              onImageCopy: (index) => _copyImage(thought.images[index]),
-              onDelete: () => _remove(thought),
+                  _ => null,
+                },
+                onTap: () => _edit(thought),
+                onToggleSubtask: (index) =>
+                    _store.toggleSubtask(thought.id, index),
+                onImageTap: (index) => _view(thought.images, index),
+                onImageCopy: (index) => _copyImage(thought.images[index]),
+                onImageMenu: openImageMenu,
+                onDelete: () => _remove(thought),
+              ),
             ),
           ),
         ),
@@ -1110,6 +1179,7 @@ class _ThoughtTile extends StatefulWidget {
     required this.onToggleSubtask,
     required this.onImageTap,
     required this.onImageCopy,
+    required this.onImageMenu,
     required this.onDelete,
   });
 
@@ -1130,6 +1200,9 @@ class _ThoughtTile extends StatefulWidget {
   final ValueChanged<int> onToggleSubtask;
   final ValueChanged<int> onImageTap;
   final ValueChanged<int> onImageCopy;
+
+  /// Opens the thought's menu at a global position, from one of its images.
+  final void Function(Offset position, int index) onImageMenu;
   final VoidCallback onDelete;
 
   @override
@@ -1243,6 +1316,8 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                                       maxHeight: images.length == 1 ? 160 : 112,
                                       onTap: () => widget.onImageTap(index),
                                       onCopy: () => widget.onImageCopy(index),
+                                      onMenu: (position) =>
+                                          widget.onImageMenu(position, index),
                                     ),
                                 ],
                               ),
@@ -1383,6 +1458,7 @@ class _ImageThumbnail extends StatelessWidget {
     required this.maxHeight,
     this.onTap,
     this.onCopy,
+    this.onMenu,
   });
 
   final ImageProvider image;
@@ -1392,6 +1468,9 @@ class _ImageThumbnail extends StatelessWidget {
 
   /// Offered in a context menu when set.
   final VoidCallback? onCopy;
+
+  /// See [_CopyImageMenu.onMenu].
+  final ValueChanged<Offset>? onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -1408,6 +1487,7 @@ class _ImageThumbnail extends StatelessWidget {
           borderRadius: paperRadius,
           child: _CopyImageMenu(
             onCopy: onCopy,
+            onMenu: onMenu,
             child: InkWell(
               onTap: onTap,
               child: Image(
@@ -1424,10 +1504,18 @@ class _ImageThumbnail extends StatelessWidget {
 
 /// Offers "Copy image" on right-click, or on long press for touch screens.
 class _CopyImageMenu extends StatefulWidget {
-  const _CopyImageMenu({required this.onCopy, required this.child});
+  const _CopyImageMenu({
+    required this.onCopy,
+    this.onMenu,
+    required this.child,
+  });
 
   /// No menu when null.
   final VoidCallback? onCopy;
+
+  /// Opens another menu at a global position on right-click, rather than
+  /// this one, when set.
+  final ValueChanged<Offset>? onMenu;
   final Widget child;
 
   @override
@@ -1470,7 +1558,8 @@ class _CopyImageMenuState extends State<_CopyImageMenu> {
   Widget build(BuildContext context) {
     if (widget.onCopy == null || !canCopyImages) return widget.child;
     return GestureDetector(
-      onSecondaryTapUp: (details) => _show(details.globalPosition),
+      onSecondaryTapUp: (details) =>
+          (widget.onMenu ?? _show)(details.globalPosition),
       onLongPressStart: (details) => _show(details.globalPosition),
       child: widget.child,
     );
@@ -2062,7 +2151,30 @@ class _ThemeMenu extends StatelessWidget {
   /// The button that opens and closes the menu with `toggle`.
   final Widget Function(BuildContext context, VoidCallback toggle) builder;
 
-  Future<void> _create(BuildContext context) async {
+  @override
+  Widget build(BuildContext context) => MenuAnchor(
+    menuChildren: _themeItems(
+      context,
+      selected: selected,
+      themes: themes,
+      onChoose: onChoose,
+    ),
+    builder: (context, controller, _) => builder(
+      context,
+      () => controller.isOpen ? controller.close() : controller.open(),
+    ),
+  );
+}
+
+/// Ticks [selected] among [themes], and creates new ones. [onChoose] gets
+/// every theme the thought then has, none when empty.
+List<Widget> _themeItems(
+  BuildContext context, {
+  required List<String> selected,
+  required List<String> themes,
+  required ValueChanged<List<String>> onChoose,
+}) {
+  Future<void> create() async {
     final name = await showDialog<String>(
       context: context,
       builder: (_) => ThemeNameDialog(themes: themes),
@@ -2070,41 +2182,74 @@ class _ThemeMenu extends StatelessWidget {
     if (name != null && !selected.contains(name)) onChoose([...selected, name]);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final named = [
-      ...themes,
-      for (final theme in selected)
-        if (!themes.contains(theme)) theme,
-    ];
-    return MenuAnchor(
-      menuChildren: [
-        for (final name in named)
-          CheckboxMenuButton(
-            value: selected.contains(name),
-            closeOnActivate: false,
-            onChanged: (_) => onChoose(
-              selected.contains(name)
-                  ? [
-                      for (final theme in selected)
-                        if (theme != name) theme,
-                    ]
-                  : [...selected, name],
-            ),
-            child: Text(name),
-          ),
-        if (named.isNotEmpty) const Divider(),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.add_rounded),
-          onPressed: () => _create(context),
-          child: Text(l10n.newThemeItem),
+  final named = [
+    ...themes,
+    for (final theme in selected)
+      if (!themes.contains(theme)) theme,
+  ];
+  return [
+    for (final name in named)
+      CheckboxMenuButton(
+        value: selected.contains(name),
+        closeOnActivate: false,
+        onChanged: (_) => onChoose(
+          selected.contains(name)
+              ? [
+                  for (final theme in selected)
+                    if (theme != name) theme,
+                ]
+              : [...selected, name],
         ),
-      ],
-      builder: (context, controller, _) => builder(
-        context,
-        () => controller.isOpen ? controller.close() : controller.open(),
+        child: Text(name),
       ),
-    );
+    if (named.isNotEmpty) const Divider(),
+    MenuItemButton(
+      leadingIcon: const Icon(Icons.add_rounded),
+      onPressed: create,
+      child: Text(AppLocalizations.of(context).newThemeItem),
+    ),
+  ];
+}
+
+/// A menu item that acts as soon as a click on it ends. [MenuItemButton]
+/// waits a frame, past the click inside which browsers let a page write to
+/// the clipboard.
+class _ClipboardMenuItem extends StatefulWidget {
+  const _ClipboardMenuItem({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  State<_ClipboardMenuItem> createState() => _ClipboardMenuItemState();
+}
+
+class _ClipboardMenuItemState extends State<_ClipboardMenuItem> {
+  var _pressed = false;
+
+  void _press() {
+    if (_pressed) return;
+    _pressed = true;
+    widget.onPressed();
   }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    onPointerUp: (event) {
+      if (!context.size!.contains(event.localPosition)) return;
+      _press();
+      MenuController.maybeOf(context)?.close();
+    },
+    child: MenuItemButton(
+      leadingIcon: Icon(widget.icon),
+      // For the keyboard.
+      onPressed: _press,
+      child: Text(widget.label),
+    ),
+  );
 }

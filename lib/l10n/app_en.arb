@@ -112,6 +112,26 @@
   "@imageNotCopied": {
     "description": "Shown in the full screen viewer when copying the image failed."
   },
+  "edit": "Edit",
+  "@edit": {
+    "description": "Item of a thought's right-click menu that opens it to edit."
+  },
+  "copyText": "Copy text",
+  "@copyText": {
+    "description": "Item of a thought's right-click menu that copies its text, as written rather than its title, to the clipboard."
+  },
+  "textNotCopied": "Couldn't copy the text.",
+  "@textNotCopied": {
+    "description": "Shown when copying a thought's text from its menu failed."
+  },
+  "deleteTheme": "Delete theme",
+  "@deleteTheme": {
+    "description": "Item of a theme's right-click menu in the sidebar, and its accessibility action. Takes the theme off its thoughts, which are kept."
+  },
+  "themeDeleted": "Theme deleted. Its thoughts stay.",
+  "@themeDeleted": {
+    "description": "Snackbar message after deleting a theme, with Undo."
+  },
   "allThoughts": "All",
   "@allThoughts": {
     "description": "Sidebar entry that lists every thought under the day it was noted."

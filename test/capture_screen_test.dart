@@ -36,6 +36,7 @@ void main() {
   Uint8List? clipboardImage;
   String? clipboardText;
   Uint8List? copiedImage;
+  var copiedTexts = <String>[];
   var copyFails = false;
 
   Future<void> pumpApp(
@@ -48,6 +49,7 @@ void main() {
     clipboardImage = null;
     clipboardText = null;
     copiedImage = null;
+    copiedTexts = [];
     copyFails = false;
     final messenger = tester.binding.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(
@@ -59,16 +61,19 @@ void main() {
       if (copyFails) throw PlatformException(code: 'denied');
       copiedImage = image;
     };
-    messenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async => switch (call.method) {
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        if (copyFails) throw PlatformException(code: 'denied');
+        copiedTexts.add((call.arguments as Map)['text'] as String);
+      }
+      return switch (call.method) {
         'Clipboard.hasStrings' => {'value': clipboardText != null},
         'Clipboard.getData' when clipboardText != null => {
           'text': clipboardText,
         },
         _ => null,
-      },
-    );
+      };
+    });
     addTearDown(() {
       messenger.setMockMethodCallHandler(
         const MethodChannel('pasteboard'),
@@ -965,12 +970,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Finder menuItem(String text) => find.widgetWithText(MenuItemButton, text);
+
   testWidgets('right-clicking a listed image offers to copy it', (
     tester,
   ) async {
     await pumpReceipt(tester);
 
     await rightClick(tester, listedImage());
+    expect(menuItem('Edit'), findsOneWidget);
     await tester.tap(find.text('Copy image'));
     await tester.pumpAndSettle();
 
@@ -1033,7 +1041,109 @@ void main() {
     await rightClick(tester, listedImage());
 
     expect(find.text('Copy image'), findsNothing);
+    expect(menuItem('Edit'), findsOneWidget);
   }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+
+  testWidgets('right-clicking a thought opens its menu', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    await rightClick(tester, listed('Buy bread'));
+    expect(menuItem('Edit'), findsOneWidget);
+    expect(menuItem('Copy text'), findsOneWidget);
+    expect(find.widgetWithText(SubmenuButton, 'Themes'), findsOneWidget);
+    expect(menuItem('Delete'), findsOneWidget);
+    expect(menuItem('Move up'), findsNothing);
+    expect(menuItem('Copy image'), findsNothing);
+
+    await tester.tap(menuItem('Edit'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(menuItem('Edit'), findsNothing);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('the menu copies the text as written, not its title', (
+    tester,
+  ) async {
+    await pumpApp(tester, [
+      Thought(
+        id: '1',
+        text: 'Get milk, eggs and flour for the pancakes',
+        title: 'Pancakes',
+        createdAt: DateTime.now(),
+      ),
+    ]);
+
+    await rightClick(tester, listed('Pancakes'));
+    await tester.tap(menuItem('Copy text'));
+    await tester.pumpAndSettle();
+
+    expect(copiedTexts, ['Get milk, eggs and flour for the pancakes']);
+    expect(menuItem('Copy text'), findsNothing);
+  });
+
+  testWidgets('a failed text copy says so', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+    copyFails = true;
+
+    await rightClick(tester, listed('Buy bread'));
+    await tester.tap(menuItem('Copy text'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isA<PlatformException>());
+    expect(find.text("Couldn't copy the text."), findsOneWidget);
+  });
+
+  testWidgets('the menu deletes a thought, with undo', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    await rightClick(tester, listed('Buy bread'));
+    await tester.tap(menuItem('Delete'));
+    await tester.pumpAndSettle();
+    expect(listed('Buy bread'), findsNothing);
+    expect(store.thoughts, isEmpty);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(listed('Buy bread'), findsOneWidget);
+  });
+
+  testWidgets('the menu key or Shift+F10 opens the menu', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+    Finder inMenu(String text) =>
+        find.descendant(of: menuItem(text), matching: find.text(text));
+
+    Focus.of(tester.element(listed('Buy bread'))).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+    await tester.pumpAndSettle();
+    expect(Focus.of(tester.element(inMenu('Edit'))).hasPrimaryFocus, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(
+      Focus.of(tester.element(inMenu('Copy text'))).hasPrimaryFocus,
+      isTrue,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(menuItem('Edit'), findsNothing);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.f10);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   testWidgets('the viewer turns between the images of a thought', (
     tester,
@@ -1423,6 +1533,60 @@ void main() {
       expect(order(), ['Work', 'Études', 'Errands', 'Bills']);
     });
 
+    testWidgets('a right-click renames or moves a theme, not All', (
+      tester,
+    ) async {
+      await pumpThemes(tester);
+
+      await rightClick(tester, inSidebar('All'));
+      expect(menuItem('Rename theme'), findsNothing);
+
+      await rightClick(tester, inSidebar('Errands'));
+      expect(
+        tester.widget<MenuItemButton>(menuItem('Move up')).onPressed,
+        isNull,
+      );
+      await tester.tap(menuItem('Move down'));
+      await tester.pumpAndSettle();
+      expect(order(), ['Études', 'Errands', 'Work']);
+
+      await rightClick(tester, inSidebar('Work'));
+      await tester.tap(menuItem('Rename theme'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Theme name'),
+        'Bills',
+      );
+      await tester.pump();
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+      expect(order(), ['Études', 'Errands', 'Bills']);
+      expect(listSettings.theme, isNull);
+    });
+
+    testWidgets('deletes a theme, whose thoughts stay, until undone', (
+      tester,
+    ) async {
+      await pumpThemes(tester);
+      await tester.tap(inSidebar('Work'));
+      await tester.pumpAndSettle();
+
+      await rightClick(tester, inSidebar('Work'));
+      await tester.tap(menuItem('Delete theme'));
+      await tester.pumpAndSettle();
+      expect(order(), ['Errands', 'Études']);
+      expect(listSettings.theme, isNull);
+      expect(listed('Fix the build'), findsOneWidget);
+      expect(store.thoughts.firstWhere((t) => t.id == '2').themes, isEmpty);
+      expect(find.text('Theme deleted. Its thoughts stay.'), findsOneWidget);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(order(), ['Errands', 'Études', 'Work']);
+      expect(listSettings.theme, 'Work');
+      expect(listed('Fix the build'), findsOneWidget);
+    });
+
     testWidgets('a click that wobbles still opens the theme', (tester) async {
       await pumpThemes(tester);
 
@@ -1711,6 +1875,36 @@ void main() {
         'Post the letter',
         'Water the plants',
       ]);
+    });
+
+    testWidgets('the menu moves a thought and changes its themes', (
+      tester,
+    ) async {
+      await pumpTheme(tester);
+
+      await rightClick(tester, listed('Buy bread'));
+      expect(
+        tester.widget<MenuItemButton>(menuItem('Move up')).onPressed,
+        isNull,
+      );
+      await tester.tap(menuItem('Move down'));
+      await tester.pumpAndSettle();
+      expect(order(tester), [
+        'Post the letter',
+        'Buy bread',
+        'Water the plants',
+      ]);
+
+      await rightClick(tester, listed('Buy bread'));
+      await tester.tap(find.widgetWithText(SubmenuButton, 'Themes'));
+      await tester.pumpAndSettle();
+      await tester.tap(checkItem('Work'));
+      await tester.pumpAndSettle();
+      expect(store.thoughts.firstWhere((t) => t.id == '3').themes, [
+        'Errands',
+        'Work',
+      ]);
+      expect(checkItem('Work'), findsOneWidget);
     });
 
     testWidgets('a screen reader or the keyboard moves a thought', (

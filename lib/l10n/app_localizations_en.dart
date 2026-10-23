@@ -91,6 +91,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get imageNotCopied => 'Couldn\'t copy the image.';
 
   @override
+  String get edit => 'Edit';
+
+  @override
+  String get copyText => 'Copy text';
+
+  @override
+  String get textNotCopied => 'Couldn\'t copy the text.';
+
+  @override
+  String get deleteTheme => 'Delete theme';
+
+  @override
+  String get themeDeleted => 'Theme deleted. Its thoughts stay.';
+
+  @override
   String get allThoughts => 'All';
 
   @override

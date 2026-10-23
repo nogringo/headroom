@@ -14,7 +14,7 @@ typedef MovableItemBuilder = Widget Function(
 
 /// The ways an item moves, for the item to put in place.
 class ItemMoves {
-  const ItemMoves._(this._index, this.actions);
+  const ItemMoves._(this._index, this.actions, {this.up, this.down});
 
   /// For an item that stays where it is.
   static const none = ItemMoves._(null, {});
@@ -23,6 +23,12 @@ class ItemMoves {
 
   /// For the item's semantics, where a screen reader reaches them.
   final Map<CustomSemanticsAction, VoidCallback> actions;
+
+  /// Null where the item cannot go one place up.
+  final VoidCallback? up;
+
+  /// Null where the item cannot go one place down.
+  final VoidCallback? down;
 
   /// Lets [child] be dragged after a long press or with a mouse. Inside a
   /// [Dismissible], a mouse then moves the item rather than sliding it away.
@@ -197,10 +203,15 @@ class SliverAnimatedReorderableListState
       context,
       _indices[at]!,
       animation,
-      ItemMoves._(at, {
-        CustomSemanticsAction(label: widgets.reorderItemUp): ?up,
-        CustomSemanticsAction(label: widgets.reorderItemDown): ?down,
-      }),
+      ItemMoves._(
+        at,
+        {
+          CustomSemanticsAction(label: widgets.reorderItemUp): ?up,
+          CustomSemanticsAction(label: widgets.reorderItemDown): ?down,
+        },
+        up: up,
+        down: down,
+      ),
     );
     return CallbackShortcuts(
       bindings: {

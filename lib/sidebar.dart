@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
+import 'context_menu.dart';
 import 'focus_ring.dart';
 import 'l10n/app_localizations.dart';
 import 'reordering.dart';
 import 'theme.dart';
 
-/// Opens every thought or a single theme's, which it can rename and move,
-/// with the backup, the AI's clean-up and its settings below.
+/// Opens every thought or a single theme's, which it can rename, move and
+/// delete, with the backup, the AI's clean-up and its settings below.
 class Sidebar extends StatelessWidget {
   const Sidebar({
     super.key,
@@ -16,6 +17,7 @@ class Sidebar extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.onRename,
+    required this.onDelete,
     required this.onReorder,
     required this.onBackup,
     required this.cleaning,
@@ -31,6 +33,7 @@ class Sidebar extends StatelessWidget {
   final String? selected;
   final ValueChanged<String?> onSelect;
   final ValueChanged<String> onRename;
+  final ValueChanged<String> onDelete;
 
   /// Called with every named theme, in their new order.
   final ValueChanged<List<String>> onReorder;
@@ -97,13 +100,37 @@ class Sidebar extends StatelessWidget {
               const SingleActivator(LogicalKeyboardKey.arrowDown, alt: true):
                   ?down,
             },
-            child: entry(
-              theme,
-              theme,
-              actions: {
-                CustomSemanticsAction(label: widgets.reorderItemUp): ?up,
-                CustomSemanticsAction(label: widgets.reorderItemDown): ?down,
-              },
+            child: ContextMenu<Never>(
+              menuChildren: (_, focusFirst) => [
+                MenuItemButton(
+                  autofocus: focusFirst,
+                  leadingIcon: const Icon(Icons.edit_outlined),
+                  onPressed: () => onRename(theme),
+                  child: Text(l10n.renameTheme),
+                ),
+                if (up != null || down != null) ...[
+                  const Divider(),
+                  ...moveMenuItems(context, up: up, down: down),
+                ],
+                const Divider(),
+                MenuItemButton(
+                  leadingIcon: const Icon(Icons.delete_outline_rounded),
+                  onPressed: () => onDelete(theme),
+                  child: Text(l10n.deleteTheme),
+                ),
+              ],
+              builder: (_) => entry(
+                theme,
+                theme,
+                actions: {
+                  CustomSemanticsAction(label: l10n.renameTheme): () =>
+                      onRename(theme),
+                  CustomSemanticsAction(label: widgets.reorderItemUp): ?up,
+                  CustomSemanticsAction(label: widgets.reorderItemDown): ?down,
+                  CustomSemanticsAction(label: l10n.deleteTheme): () =>
+                      onDelete(theme),
+                },
+              ),
             ),
           ),
         ),
