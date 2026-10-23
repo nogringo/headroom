@@ -26,7 +26,7 @@ void main() {
     pasted.close();
   });
 
-  web.ClipboardEvent paste({bool image = true, String? text}) {
+  web.ClipboardEvent paste({bool image = true, String? text, String? html}) {
     final data = web.DataTransfer();
     if (image) {
       data.items.add(
@@ -38,6 +38,7 @@ void main() {
       );
     }
     if (text != null) data.setData('text/plain', text);
+    if (html != null) data.setData('text/html', html);
     final event = web.ClipboardEvent(
       'paste',
       web.ClipboardEventInit(clipboardData: data, cancelable: true),
@@ -65,5 +66,62 @@ void main() {
   test('stops listening', () {
     stop();
     expect(paste().defaultPrevented, isFalse);
+  });
+
+  group('HTML', () {
+    final pastedHtml = <String>[];
+    var hasText = true;
+    late VoidCallback stopHtml;
+
+    setUp(() {
+      pastedHtml.clear();
+      hasText = true;
+      stopHtml = listenToPastedHtml(
+        accept: () => accept,
+        onHtml: (html) {
+          pastedHtml.add(html);
+          return hasText;
+        },
+      );
+    });
+
+    tearDown(() => stopHtml());
+
+    test('takes the HTML pasted with text', () {
+      final event = paste(image: false, text: 'Bread', html: '<b>Bread</b>');
+
+      expect(event.defaultPrevented, isTrue);
+      expect(pastedHtml, ['<b>Bread</b>']);
+    });
+
+    test('leaves the paste to the browser when the HTML has no text', () {
+      hasText = false;
+
+      expect(
+        paste(image: false, text: 'a.png', html: '<img>').defaultPrevented,
+        isFalse,
+      );
+    });
+
+    test('leaves an image pasted with an <img> to the image', () async {
+      paste(html: '<img src="a.png">');
+
+      expect(await pasted.stream.first, bytes);
+      expect(pastedHtml, isEmpty);
+    });
+
+    test('leaves the paste to the browser when not accepted', () {
+      accept = false;
+
+      expect(
+        paste(
+          image: false,
+          text: 'Bread',
+          html: '<b>Bread</b>',
+        ).defaultPrevented,
+        isFalse,
+      );
+      expect(pastedHtml, isEmpty);
+    });
   });
 }

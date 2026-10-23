@@ -52,14 +52,20 @@ class ThoughtStore extends ChangeNotifier {
 
   Future<Uint8List> readImage(String name) => _storage.readImage(name);
 
-  /// Needs a non-blank [text], some [images], or both.
-  Thought? add(String text, {List<String> images = const []}) {
+  /// Needs a non-blank [text], some [images], or both. [delta] is the
+  /// text's formatting, see [Thought.delta].
+  Thought? add(
+    String text, {
+    List<Map<String, dynamic>> delta = const [],
+    List<String> images = const [],
+  }) {
     final trimmed = text.trim();
     if (trimmed.isEmpty && images.isEmpty) return null;
     final now = DateTime.now();
     final thought = Thought(
       id: '${now.microsecondsSinceEpoch}',
       text: trimmed,
+      delta: delta,
       images: images,
       createdAt: now,
     );
@@ -71,11 +77,20 @@ class ThoughtStore extends ChangeNotifier {
   /// Needs a non-blank [text], some [images], or both. A removed image is
   /// deleted at the next [load]. Keeps what the AI gave the thought, which it
   /// is not asked about again.
-  void update(String id, {required String text, required List<String> images}) {
+  void update(
+    String id, {
+    required String text,
+    List<Map<String, dynamic>> delta = const [],
+    required List<String> images,
+  }) {
     final index = _thoughts.indexWhere((t) => t.id == id);
     final trimmed = text.trim();
     if (index == -1 || (trimmed.isEmpty && images.isEmpty)) return;
-    _thoughts[index] = _thoughts[index].copyWith(text: trimmed, images: images);
+    _thoughts[index] = _thoughts[index].copyWith(
+      text: trimmed,
+      delta: delta,
+      images: images,
+    );
     _changed();
   }
 

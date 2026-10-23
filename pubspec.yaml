@@ -14,10 +14,13 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  flutter_quill: ^11.6.0
+  html: ^0.15.6
   http: ^1.6.0
   intl: any
   pasteboard: ^0.5.0
   path_provider: ^2.1.6
+  quill_native_bridge: ^11.2.0
   web: ^1.1.1
 
 dev_dependencies:

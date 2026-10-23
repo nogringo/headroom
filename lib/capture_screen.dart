@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import 'backup.dart';
 import 'clipboard_image_io.dart'
@@ -12,6 +13,7 @@ import 'clipboard_image_io.dart'
 import 'context_menu.dart';
 import 'day_label.dart';
 import 'focus_ring.dart';
+import 'formatting.dart';
 import 'image_paste.dart';
 import 'l10n/app_localizations.dart';
 import 'list_settings.dart';
@@ -23,6 +25,7 @@ import 'theme.dart';
 import 'theme_name_dialog.dart';
 import 'theme_names.dart';
 import 'thought.dart';
+import 'thought_field.dart';
 import 'thought_store.dart';
 import 'tidier.dart';
 import 'tidy_client.dart';
@@ -61,15 +64,6 @@ List<_Row> _rowsOf(Iterable<Thought> thoughts, {required bool withHeadings}) {
 
 Object _keyOf(_Row row) => row.thought?.id ?? row.day;
 
-/// Touch keyboards have a single key, kept for sending. On the web, the
-/// platform is the browser's OS.
-bool _shiftEnterBreaksLine(TargetPlatform platform) => switch (platform) {
-  TargetPlatform.macOS ||
-  TargetPlatform.windows ||
-  TargetPlatform.linux => true,
-  _ => false,
-};
-
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
     super.key,
@@ -89,7 +83,7 @@ class CaptureScreen extends StatefulWidget {
 }
 
 class _CaptureScreenState extends State<CaptureScreen> {
-  final _input = TextEditingController();
+  final _input = thoughtController();
   final _inputFocus = FocusNode();
   var _listKey = GlobalKey<SliverAnimatedReorderableListState>();
   final _scaffold = GlobalKey<ScaffoldState>();
@@ -216,14 +210,22 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   void _capture() {
+    final content = contentOf(_input.document);
     final images = [for (final pasted in _attachments) pasted.name];
-    final thought = _store.add(_input.text, images: images);
+    final thought = _store.add(
+      content.text,
+      delta: content.delta,
+      images: images,
+    );
     if (thought == null) return;
     // Its id is only known now, after the store has told the list.
     _notedHere.add(thought.id);
     _syncRows();
     _tidier.noted(thought);
-    _input.clear();
+    // Rather than clear(), which keeps the last line's list and bold.
+    _input
+      ..document = Document()
+      ..toggledStyle = const Style();
     setState(() => _attachments = []);
     _inputFocus.requestFocus();
     if (_scroll.hasClients && _scroll.offset > 0) {
@@ -380,7 +382,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
       ),
     );
     if (edit == null) return;
-    _store.update(thought.id, text: edit.text, images: edit.images);
+    _store.update(
+      thought.id,
+      text: edit.text,
+      delta: edit.delta,
+      images: edit.images,
+    );
     if (!listEquals(edit.themes, thought.themes)) {
       _store.chooseThemes(thought.id, edit.themes);
     }
@@ -456,11 +463,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
-    final inputStyle = theme.textTheme.displaySmall?.copyWith(
+    final inputStyle = theme.textTheme.displaySmall!.copyWith(
       color: scheme.onPrimaryContainer,
     );
     final attachments = _attachments;
-    final shiftEnter = _shiftEnterBreaksLine(theme.platform);
 
     return ListenableBuilder(
       listenable: Listenable.merge([_store, _tidier, _listSettings]),
@@ -494,53 +500,29 @@ class _CaptureScreenState extends State<CaptureScreen> {
                             }
                           },
                           onError: _showError,
-                          builder: (contextMenuBuilder) => _SubmitOnEnter(
+                          builder: (contextMenuBuilder) => ThoughtField(
                             controller: _input,
+                            focusNode: _inputFocus,
+                            label: l10n.thoughtField,
+                            style: inputStyle,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            maxLines: 5,
+                            action: TextInputAction.send,
                             onSubmit: _capture,
-                            // The hint goes away once there is text.
-                            child: Semantics(
-                              label: l10n.thoughtField,
-                              child: TextField(
-                                controller: _input,
-                                focusNode: _inputFocus,
-                                autofocus: true,
-                                minLines: 1,
-                                maxLines: 5,
-                                keyboardType: shiftEnter
-                                    ? TextInputType.multiline
-                                    : TextInputType.text,
-                                textInputAction: shiftEnter
-                                    ? TextInputAction.newline
-                                    : TextInputAction.send,
-                                textCapitalization:
-                                    TextCapitalization.sentences,
-                                onEditingComplete: _capture,
-                                contextMenuBuilder: contextMenuBuilder,
-                                style: inputStyle,
-                                decoration: InputDecoration(
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  hintText: l10n.captureHint,
-                                  // The French hint wraps; short text should not keep its two lines.
-                                  maintainHintSize: false,
-                                  hintStyle: inputStyle?.copyWith(
-                                    color: scheme.onPrimaryContainer.withValues(
-                                      alpha: 0.6,
-                                    ),
-                                  ),
-                                ),
+                            contextMenuBuilder: contextMenuBuilder,
+                            placeholder: l10n.captureHint,
+                            placeholderStyle: inputStyle.copyWith(
+                              color: scheme.onPrimaryContainer.withValues(
+                                alpha: 0.6,
                               ),
                             ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 12),
-                      ValueListenableBuilder(
-                        valueListenable: _input,
-                        builder: (context, value, _) => IconButton.filled(
+                      ListenableBuilder(
+                        listenable: _input,
+                        builder: (context, _) => IconButton.filled(
                           style: IconButton.styleFrom(
                             disabledBackgroundColor: scheme.onPrimaryContainer
                                 .withValues(alpha: 0.08),
@@ -549,7 +531,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           ),
                           tooltip: l10n.captureButton,
                           onPressed:
-                              value.text.trim().isEmpty && attachments.isEmpty
+                              _input.document.toPlainText().trim().isEmpty &&
+                                  attachments.isEmpty
                               ? null
                               : _capture,
                           icon: const Icon(Icons.arrow_upward_rounded),
@@ -951,6 +934,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             child: moves.draggable(
               _ThoughtTile(
                 text: thought.text,
+                delta: thought.delta,
                 title: thought.title,
                 subtasks: thought.subtasks,
                 images: _imagesOf(thought),
@@ -1149,6 +1133,7 @@ class _CleanUpCard extends StatelessWidget {
 class _ThoughtTile extends StatefulWidget {
   const _ThoughtTile({
     required this.text,
+    required this.delta,
     required this.title,
     required this.subtasks,
     required this.images,
@@ -1165,6 +1150,9 @@ class _ThoughtTile extends StatefulWidget {
   });
 
   final String text;
+
+  /// The formatting of [text], see [Thought.delta].
+  final List<Map<String, dynamic>> delta;
 
   /// Shown in place of [text], which the thought opens on.
   final String? title;
@@ -1201,7 +1189,8 @@ class _ThoughtTileState extends State<_ThoughtTile> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final text = widget.title ?? widget.text;
+    final title = widget.title;
+    final text = title ?? widget.text;
     final subtasks = widget.subtasks;
     final images = widget.images;
     final footer = widget.sorting ? const _Sorting() : widget.themeButton;
@@ -1264,7 +1253,13 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (text.isNotEmpty)
+                          if (title == null && widget.delta.isNotEmpty)
+                            FormattedText(
+                              text: text,
+                              delta: widget.delta,
+                              style: theme.textTheme.bodyLarge!,
+                            )
+                          else if (text.isNotEmpty)
                             Text(text, style: theme.textTheme.bodyLarge),
                           if (subtasks.isNotEmpty)
                             Padding(
@@ -1907,45 +1902,12 @@ class _SwipeBackground extends StatelessWidget {
   }
 }
 
-/// Submits on Enter. Shift+Enter goes on to the platform, which starts a new
-/// line in a multiline field.
-class _SubmitOnEnter extends StatelessWidget {
-  const _SubmitOnEnter({
-    required this.controller,
-    required this.onSubmit,
-    required this.child,
-  });
-
-  final TextEditingController controller;
-  final VoidCallback onSubmit;
-  final Widget child;
-
-  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
-    final key = event.logicalKey;
-    if (event is KeyUpEvent ||
-        (key != LogicalKeyboardKey.enter &&
-            key != LogicalKeyboardKey.numpadEnter) ||
-        HardwareKeyboard.instance.isShiftPressed ||
-        // An input method confirms its composition with Enter.
-        controller.value.composing.isValid) {
-      return KeyEventResult.ignored;
-    }
-    // Repeats are swallowed, or a held Enter would fill the emptied field
-    // with line breaks.
-    if (event is KeyDownEvent) onSubmit();
-    return KeyEventResult.handled;
-  }
-
-  @override
-  Widget build(BuildContext context) => Focus(
-    canRequestFocus: false,
-    skipTraversal: true,
-    onKeyEvent: _handleKey,
-    child: child,
-  );
-}
-
-typedef _Edit = ({String text, List<String> images, List<String> themes});
+typedef _Edit = ({
+  String text,
+  List<Map<String, dynamic>> delta,
+  List<String> images,
+  List<String> themes,
+});
 
 class _EditDialog extends StatefulWidget {
   const _EditDialog({
@@ -1967,7 +1929,10 @@ class _EditDialog extends StatefulWidget {
 }
 
 class _EditDialogState extends State<_EditDialog> {
-  late final _controller = TextEditingController(text: widget.thought.text);
+  late final _controller = thoughtController(
+    text: widget.thought.text,
+    delta: widget.thought.delta,
+  );
   final _focus = FocusNode();
   late var _images = <PastedImage>[
     for (final name in widget.thought.images)
@@ -1976,7 +1941,9 @@ class _EditDialogState extends State<_EditDialog> {
   late var _themes = widget.thought.themes;
   String? _error;
 
-  bool _canSave(String text) => text.trim().isNotEmpty || _images.isNotEmpty;
+  bool get _canSave =>
+      _controller.document.toPlainText().trim().isNotEmpty ||
+      _images.isNotEmpty;
 
   @override
   void dispose() {
@@ -1986,9 +1953,11 @@ class _EditDialogState extends State<_EditDialog> {
   }
 
   void _save() {
-    if (!_canSave(_controller.text)) return;
+    if (!_canSave) return;
+    final content = contentOf(_controller.document);
     Navigator.pop<_Edit>(context, (
-      text: _controller.text,
+      text: content.text,
+      delta: content.delta,
       images: [for (final pasted in _images) pasted.name],
       themes: _themes,
     ));
@@ -2001,7 +1970,6 @@ class _EditDialogState extends State<_EditDialog> {
     final l10n = AppLocalizations.of(context);
     final images = _images;
     final error = _error;
-    final shiftEnter = _shiftEnterBreaksLine(theme.platform);
     // The thought's own note, taken back off the list.
     return AlertDialog(
       semanticLabel: l10n.editTitle,
@@ -2040,37 +2008,19 @@ class _EditDialogState extends State<_EditDialog> {
               _error = known ? l10n.imageAlreadyAdded : null;
             }),
             onError: (message) => setState(() => _error = message),
-            builder: (contextMenuBuilder) => _SubmitOnEnter(
+            builder: (contextMenuBuilder) => ThoughtField(
               controller: _controller,
-              onSubmit: _save,
-              child: Semantics(
-                label: l10n.thoughtField,
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focus,
-                  autofocus: true,
-                  minLines: 1,
-                  maxLines: 8,
-                  keyboardType: shiftEnter
-                      ? TextInputType.multiline
-                      : TextInputType.text,
-                  textInputAction: shiftEnter
-                      ? TextInputAction.newline
-                      : TextInputAction.done,
-                  textCapitalization: TextCapitalization.sentences,
-                  onEditingComplete: _save,
-                  contextMenuBuilder: contextMenuBuilder,
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontSize: 22,
-                    color: scheme.onPrimaryContainer,
-                  ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: 4),
-                  ),
-                ),
+              focusNode: _focus,
+              label: l10n.thoughtField,
+              style: theme.textTheme.displaySmall!.copyWith(
+                fontSize: 22,
+                color: scheme.onPrimaryContainer,
               ),
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              maxLines: 8,
+              action: TextInputAction.done,
+              onSubmit: _save,
+              contextMenuBuilder: contextMenuBuilder,
             ),
           ),
           // Inline rather than a snackbar, which would sit under the dialog's barrier.
@@ -2131,9 +2081,9 @@ class _EditDialogState extends State<_EditDialog> {
               child: Text(l10n.cancel),
             ),
             const SizedBox(width: 8),
-            ValueListenableBuilder(
-              valueListenable: _controller,
-              builder: (context, value, _) => FilledButton(
+            ListenableBuilder(
+              listenable: _controller,
+              builder: (context, _) => FilledButton(
                 style: FilledButton.styleFrom(
                   disabledBackgroundColor: scheme.onPrimaryContainer.withValues(
                     alpha: 0.08,
@@ -2142,7 +2092,7 @@ class _EditDialogState extends State<_EditDialog> {
                     alpha: 0.4,
                   ),
                 ),
-                onPressed: _canSave(value.text) ? _save : null,
+                onPressed: _canSave ? _save : null,
                 child: Text(l10n.save),
               ),
             ),

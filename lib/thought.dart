@@ -5,6 +5,7 @@ class Thought {
   Thought({
     required this.id,
     required this.text,
+    this.delta = const [],
     this.images = const [],
     required this.createdAt,
     this.themes = const [],
@@ -20,6 +21,9 @@ class Thought {
     return Thought(
       id: json['id'] as String,
       text: json['text'] as String,
+      delta: [
+        ...?(json['delta'] as List<dynamic>?)?.cast<Map<String, dynamic>>(),
+      ],
       images: [
         ...?(json['images'] as List<dynamic>?)?.cast<String>(),
         // Written before a thought could hold several images.
@@ -46,6 +50,10 @@ class Thought {
   /// Empty when the thought is only images. Kept as written, whatever the AI
   /// makes of it.
   final String text;
+
+  /// The [text] with its formatting, as Quill Delta operations. Empty when it
+  /// has none.
+  final List<Map<String, dynamic>> delta;
 
   /// Names of the images in the storage, in the order they were added.
   final List<String> images;
@@ -74,6 +82,7 @@ class Thought {
   /// Null keeps what this thought has.
   Thought copyWith({
     String? text,
+    List<Map<String, dynamic>>? delta,
     List<String>? images,
     List<String>? themes,
     bool? themesChosen,
@@ -83,6 +92,7 @@ class Thought {
   }) => Thought(
     id: id,
     text: text ?? this.text,
+    delta: delta ?? this.delta,
     images: images ?? this.images,
     createdAt: createdAt,
     themes: themes ?? this.themes,
@@ -102,6 +112,7 @@ class Thought {
     return {
       'id': id,
       'text': text,
+      if (delta.isNotEmpty) 'delta': delta,
       if (images.isNotEmpty) 'images': images,
       'createdAt': createdAt.toUtc().toIso8601String(),
       if (themes.isNotEmpty) 'themes': themes,

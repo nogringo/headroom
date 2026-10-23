@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import 'clipboard_image_io.dart'
     if (dart.library.js_interop) 'clipboard_image_web.dart';
@@ -10,8 +11,8 @@ import 'thought_store.dart';
 /// An image already saved in the store, ready to go in a thought.
 typedef PastedImage = ({String name, ImageProvider image});
 
-/// Lets the text field built by [builder] take pasted images, through
-/// Cmd/Ctrl+V, "Paste image" in its context menu, and paste events on the web.
+/// Lets the field built by [builder] take pasted images, through Cmd/Ctrl+V,
+/// "Paste image" in its context menu, and paste events on the web.
 class ImagePaste extends StatefulWidget {
   const ImagePaste({
     super.key,
@@ -30,7 +31,7 @@ class ImagePaste extends StatefulWidget {
   final ValueChanged<String> onError;
 
   /// Builds the field, which must use the given context menu builder.
-  final Widget Function(EditableTextContextMenuBuilder contextMenuBuilder)
+  final Widget Function(QuillEditorContextMenuBuilder contextMenuBuilder)
   builder;
 
   @override
@@ -99,22 +100,20 @@ class _ImagePasteState extends State<ImagePaste> {
     }
   }
 
-  Widget _buildContextMenu(
-    BuildContext context,
-    EditableTextState editableText,
-  ) => AdaptiveTextSelectionToolbar.buttonItems(
-    anchors: editableText.contextMenuAnchors,
-    buttonItems: [
-      ...editableText.contextMenuButtonItems,
-      ContextMenuButtonItem(
-        label: AppLocalizations.of(context).pasteImage,
-        onPressed: () {
-          editableText.hideToolbar();
-          _pasteImageFromMenu();
-        },
-      ),
-    ],
-  );
+  Widget _buildContextMenu(BuildContext context, QuillRawEditorState editor) =>
+      AdaptiveTextSelectionToolbar.buttonItems(
+        anchors: editor.contextMenuAnchors,
+        buttonItems: [
+          ...editor.contextMenuButtonItems,
+          ContextMenuButtonItem(
+            label: AppLocalizations.of(context).pasteImage,
+            onPressed: () {
+              editor.hideToolbar();
+              _pasteImageFromMenu();
+            },
+          ),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) => Actions(

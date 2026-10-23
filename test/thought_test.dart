@@ -22,6 +22,26 @@ void main() {
     expect(Thought.fromJson(thought.toJson()).images, isEmpty);
   });
 
+  test('keeps its formatting, and writes none for plain text', () {
+    final plain = Thought(id: '1', text: 'Note', createdAt: DateTime(2026));
+    final formatted = Thought(
+      id: '2',
+      text: 'Note',
+      delta: [
+        {
+          'insert': 'Note',
+          'attributes': {'bold': true},
+        },
+        {'insert': '\n'},
+      ],
+      createdAt: DateTime(2026),
+    );
+
+    expect(plain.toJson(), isNot(contains('delta')));
+    expect(Thought.fromJson(plain.toJson()).delta, isEmpty);
+    expect(Thought.fromJson(formatted.toJson()).delta, formatted.delta);
+  });
+
   test('keeps its themes, and writes none until it has some', () {
     final unsorted = Thought(id: '1', text: 'Note', createdAt: DateTime(2026));
     final sorted = Thought(

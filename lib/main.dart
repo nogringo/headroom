@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import 'backup.dart';
 import 'capture_screen.dart';
@@ -60,7 +61,11 @@ class HeadroomApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      localizationsDelegates: [
+        ...AppLocalizations.localizationsDelegates,
+        // For the menu a link in a field opens.
+        FlutterQuillLocalizations.delegate,
+      ],
       supportedLocales: AppLocalizations.supportedLocales,
       home: CaptureScreen(
         store: store,

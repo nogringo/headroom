@@ -5,14 +5,18 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:headroom/backup.dart';
-import 'package:headroom/clipboard_image_io.dart' show writeClipboardImage;
+import 'package:headroom/clipboard_image_io.dart'
+    show readClipboardHtml, writeClipboardImage;
+import 'package:headroom/formatting.dart';
 import 'package:headroom/list_settings.dart';
 import 'package:headroom/main.dart';
 import 'package:headroom/sidebar.dart';
 import 'package:headroom/sliver_animated_reorderable_list.dart';
 import 'package:headroom/thought.dart';
+import 'package:headroom/thought_field.dart';
 import 'package:headroom/thought_store.dart';
 import 'package:headroom/tidier.dart';
 import 'package:headroom/tidy_client.dart';
@@ -36,6 +40,7 @@ void main() {
   late ListSettings listSettings;
   Uint8List? clipboardImage;
   String? clipboardText;
+  String? clipboardHtml;
   Uint8List? copiedImage;
   var copiedTexts = <String>[];
   var copyFails = false;
@@ -49,6 +54,7 @@ void main() {
   ]) async {
     clipboardImage = null;
     clipboardText = null;
+    clipboardHtml = null;
     copiedImage = null;
     copiedTexts = [];
     copyFails = false;
@@ -57,6 +63,8 @@ void main() {
       const MethodChannel('pasteboard'),
       (call) async => call.method == 'image' ? clipboardImage : null,
     );
+    final realReadClipboardHtml = readClipboardHtml;
+    readClipboardHtml = () async => clipboardHtml;
     final realWriteClipboardImage = writeClipboardImage;
     writeClipboardImage = (image) async {
       if (copyFails) throw PlatformException(code: 'denied');
@@ -82,6 +90,7 @@ void main() {
       );
       messenger.setMockMethodCallHandler(SystemChannels.platform, null);
       writeClipboardImage = realWriteClipboardImage;
+      readClipboardHtml = realReadClipboardHtml;
     });
 
     storage = InMemoryStorage(initial)..images.addAll(images);
@@ -107,8 +116,49 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  TextField captureField(WidgetTester tester) =>
-      tester.widget<TextField>(find.byType(TextField));
+  ThoughtField captureField(WidgetTester tester) =>
+      tester.widget<ThoughtField>(find.byType(ThoughtField).first);
+
+  QuillEditorConfig editorConfig(WidgetTester tester) => tester
+      .widget<QuillEditor>(
+        find.descendant(
+          of: find.byType(ThoughtField).first,
+          matching: find.byType(QuillEditor),
+        ),
+      )
+      .config;
+
+  /// What the capture field, or [field], holds.
+  String fieldText(WidgetTester tester, [Finder? field]) {
+    final plain = tester
+        .widget<ThoughtField>(field ?? find.byType(ThoughtField).first)
+        .controller
+        .document
+        .toPlainText();
+    return plain.substring(0, plain.length - 1);
+  }
+
+  /// Opens the keyboard on [field], as tapping it would.
+  Future<void> showKeyboard(WidgetTester tester, Finder field) async {
+    tester
+        .state<QuillRawEditorState>(
+          find.descendant(of: field, matching: find.byType(QuillRawEditor)),
+        )
+        .requestKeyboard();
+    await tester.idle();
+  }
+
+  /// Replaces what [field] holds with [text], as the keyboard would.
+  Future<void> enterText(WidgetTester tester, Finder field, String text) async {
+    await showKeyboard(tester, field);
+    tester.testTextInput.updateEditingValue(
+      TextEditingValue(
+        text: '$text\n',
+        selection: TextSelection.collapsed(offset: text.length),
+      ),
+    );
+    await tester.idle();
+  }
 
   IconButton sendButton(WidgetTester tester) => tester.widget<IconButton>(
     find.widgetWithIcon(IconButton, Icons.arrow_upward_rounded),
@@ -168,7 +218,7 @@ void main() {
   }
 
   Future<void> pasteImageFromMenu(WidgetTester tester, [Finder? field]) async {
-    await tester.longPress(field ?? find.byType(TextField));
+    await tester.longPress(field ?? find.byType(ThoughtField));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Paste image'));
     await tester.pumpAndSettle();
@@ -187,8 +237,11 @@ void main() {
   testWidgets('opens with the field focused and an empty list', (tester) async {
     await pumpApp(tester);
 
-    expect(captureField(tester).focusNode!.hasFocus, isTrue);
-    expect(find.text("What's on your mind?"), findsOneWidget);
+    expect(captureField(tester).focusNode.hasFocus, isTrue);
+    expect(
+      find.text("What's on your mind?", findRichText: true),
+      findsOneWidget,
+    );
     expect(find.text('What you note shows up here.'), findsOneWidget);
   });
 
@@ -197,15 +250,15 @@ void main() {
   ) async {
     await pumpApp(tester);
 
-    await tester.enterText(find.byType(TextField), 'Call the garage');
+    await enterText(tester, find.byType(ThoughtField), 'Call the garage');
     await tester.testTextInput.receiveAction(TextInputAction.send);
     await tester.pumpAndSettle();
     await store.flush();
 
     expect(find.text('Call the garage'), findsOneWidget);
     expect(find.text('Today'), findsOneWidget);
-    expect(captureField(tester).controller!.text, isEmpty);
-    expect(captureField(tester).focusNode!.hasFocus, isTrue);
+    expect(fieldText(tester), isEmpty);
+    expect(captureField(tester).focusNode.hasFocus, isTrue);
     expect(storage.saved.single.text, 'Call the garage');
   });
 
@@ -214,7 +267,7 @@ void main() {
   ) async {
     await pumpApp(tester);
 
-    await tester.enterText(find.byType(TextField), 'Call the garage');
+    await enterText(tester, find.byType(ThoughtField), 'Call the garage');
     await tester.testTextInput.receiveAction(TextInputAction.send);
     await tester.pumpAndSettle();
 
@@ -226,11 +279,11 @@ void main() {
   testWidgets('the field keeps its label once it holds text', (tester) async {
     await pumpApp(tester);
 
-    await tester.enterText(find.byType(TextField), 'Buy bread');
+    await enterText(tester, find.byType(ThoughtField), 'Buy bread');
     await tester.pumpAndSettle();
 
     expect(
-      tester.getSemantics(find.byType(EditableText)),
+      tester.getSemantics(find.byType(ThoughtField)),
       isSemantics(label: 'Thought', value: 'Buy bread'),
     );
   });
@@ -239,7 +292,7 @@ void main() {
     await pumpApp(tester);
     storage.failWrites = true;
 
-    await tester.enterText(find.byType(TextField), 'Buy bread');
+    await enterText(tester, find.byType(ThoughtField), 'Buy bread');
     await tester.testTextInput.receiveAction(TextInputAction.send);
     await tester.pumpAndSettle();
 
@@ -261,7 +314,7 @@ void main() {
 
     expect(sendButton(tester).onPressed, isNull);
 
-    await tester.enterText(find.byType(TextField), 'Buy bread');
+    await enterText(tester, find.byType(ThoughtField), 'Buy bread');
     await tester.pump();
     await tester.tap(find.byWidget(sendButton(tester)));
     await tester.pumpAndSettle();
@@ -276,19 +329,23 @@ void main() {
     await pumpApp(tester);
 
     // The platform inserts the line break, as the field takes several lines.
-    expect(captureField(tester).keyboardType, TextInputType.multiline);
-    await tester.enterText(find.byType(TextField), 'Call the garage');
+    expect(editorConfig(tester).textInputAction, TextInputAction.newline);
+    await enterText(tester, find.byType(ThoughtField), 'Call the garage');
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     expect(await tester.sendKeyEvent(LogicalKeyboardKey.enter), isFalse);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     expect(store.thoughts, isEmpty);
 
-    await tester.enterText(find.byType(TextField), 'Call the garage\nTyres');
+    await enterText(
+      tester,
+      find.byType(ThoughtField),
+      'Call the garage\nTyres',
+    );
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
 
     expect(store.thoughts.single.text, 'Call the garage\nTyres');
-    expect(captureField(tester).controller!.text, isEmpty);
+    expect(fieldText(tester), isEmpty);
   }, variant: TargetPlatformVariant.desktop());
 
   testWidgets('Enter is left to an input method that is composing', (
@@ -296,10 +353,10 @@ void main() {
   ) async {
     await pumpApp(tester);
 
-    await tester.showKeyboard(find.byType(TextField));
+    await showKeyboard(tester, find.byType(ThoughtField));
     tester.testTextInput.updateEditingValue(
       const TextEditingValue(
-        text: 'にほん',
+        text: 'にほん\n',
         selection: TextSelection.collapsed(offset: 3),
         composing: TextRange(start: 0, end: 3),
       ),
@@ -308,13 +365,19 @@ void main() {
 
     expect(await tester.sendKeyEvent(LogicalKeyboardKey.enter), isFalse);
     expect(store.thoughts, isEmpty);
+
+    // Quill trips over a composition still going when it is disposed.
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: 'にほん\n',
+        selection: TextSelection.collapsed(offset: 3),
+      ),
+    );
   }, variant: TargetPlatformVariant.desktop());
 
   group('back to the field', () {
-    bool fieldFocused(WidgetTester tester) => tester
-        .widget<TextField>(find.byType(TextField).first)
-        .focusNode!
-        .hasFocus;
+    bool fieldFocused(WidgetTester tester) =>
+        captureField(tester).focusNode.hasFocus;
 
     Future<void> leaveField(WidgetTester tester) async {
       FocusManager.instance.primaryFocus?.unfocus();
@@ -348,7 +411,7 @@ void main() {
       await leaveField(tester);
       await press(tester, LogicalKeyboardKey.slash, character: '/');
       expect(fieldFocused(tester), isTrue);
-      expect(captureField(tester).controller!.text, isEmpty);
+      expect(fieldText(tester), isEmpty);
     });
 
     testWidgets('with Cmd+N on a Mac', (tester) async {
@@ -408,7 +471,7 @@ void main() {
   testWidgets('touch keyboards keep their send key', (tester) async {
     await pumpApp(tester);
 
-    expect(captureField(tester).textInputAction, TextInputAction.send);
+    expect(editorConfig(tester).textInputAction, TextInputAction.send);
   }, variant: TargetPlatformVariant.mobile());
 
   testWidgets('large text with the keyboard up fits a landscape phone', (
@@ -422,7 +485,7 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await pumpApp(tester);
 
-    await tester.enterText(find.byType(TextField), 'word ' * 40);
+    await enterText(tester, find.byType(ThoughtField), 'word ' * 40);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -507,7 +570,7 @@ void main() {
     ]);
     expect(find.text('Today'), findsNothing);
 
-    await tester.enterText(find.byType(TextField), 'Buy bread');
+    await enterText(tester, find.byType(ThoughtField), 'Buy bread');
     await tester.testTextInput.receiveAction(TextInputAction.send);
     await tester.pumpAndSettle();
 
@@ -630,7 +693,7 @@ void main() {
 
     await tester.tap(find.text('Buy bred'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, 'Buy bread');
+    await enterText(tester, find.byType(ThoughtField).last, 'Buy bread');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
@@ -645,7 +708,11 @@ void main() {
 
     await tester.tap(find.text('Buy bread'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, 'Buy bread\nAnd milk');
+    await enterText(
+      tester,
+      find.byType(ThoughtField).last,
+      'Buy bread\nAnd milk',
+    );
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
 
@@ -712,7 +779,7 @@ void main() {
     await tester.pump();
     expect(saveButton().onPressed, isNull);
 
-    await tester.enterText(find.byType(TextField).last, 'Receipt');
+    await enterText(tester, find.byType(ThoughtField).last, 'Receipt');
     await tester.pump();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
@@ -731,7 +798,7 @@ void main() {
 
     await tester.tap(find.text('Poster'));
     await tester.pumpAndSettle();
-    await pasteImageFromMenu(tester, find.byType(TextField).last);
+    await pasteImageFromMenu(tester, find.byType(ThoughtField).last);
 
     expect(
       find.descendant(
@@ -836,8 +903,80 @@ void main() {
 
     await pressPaste(tester);
 
-    expect(captureField(tester).controller!.text, 'Copied from Word');
+    expect(fieldText(tester), 'Copied from Word');
     expect(find.byTooltip('Remove image'), findsNothing);
+  });
+
+  testWidgets('pasting keeps the bold and the lists of what was copied', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    clipboardText = 'Shopping\nBread\nMilk';
+    clipboardHtml =
+        '<div><b>Shopping</b></div><ul><li>Bread</li><li>Milk</li></ul>';
+
+    await pressPaste(tester);
+    await tester.tap(find.byWidget(sendButton(tester)));
+    await tester.pumpAndSettle();
+    await store.flush();
+
+    final thought = storage.saved.single;
+    expect(thought.text, 'Shopping\n- Bread\n- Milk');
+    expect(thought.delta, [
+      {
+        'insert': 'Shopping',
+        'attributes': {'bold': true},
+      },
+      {'insert': '\nBread'},
+      {
+        'insert': '\n',
+        'attributes': {'list': 'bullet'},
+      },
+      {'insert': 'Milk'},
+      {
+        'insert': '\n',
+        'attributes': {'list': 'bullet'},
+      },
+    ]);
+    expect(find.byType(FormattedText), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byType(FormattedText)).label,
+      startsWith('Shopping\n- Bread\n- Milk\n'),
+    );
+  });
+
+  testWidgets('editing keeps the formatting of a thought', (tester) async {
+    await pumpApp(tester, [
+      Thought(
+        id: '1',
+        text: 'Bread and milk',
+        delta: [
+          {
+            'insert': 'Bread',
+            'attributes': {'bold': true},
+          },
+          {'insert': ' and milk\n'},
+        ],
+        createdAt: DateTime.now(),
+      ),
+    ]);
+
+    await tester.tap(find.byType(FormattedText));
+    await tester.pumpAndSettle();
+    final field = find.byType(ThoughtField).last;
+    expect(fieldText(tester, field), 'Bread and milk');
+    await enterText(tester, field, 'Bread and milk!');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(store.thoughts.single.text, 'Bread and milk!');
+    expect(store.thoughts.single.delta, [
+      {
+        'insert': 'Bread',
+        'attributes': {'bold': true},
+      },
+      {'insert': ' and milk!\n'},
+    ]);
   });
 
   testWidgets('"Paste image" attaches the image, or says there is none', (
@@ -852,7 +991,7 @@ void main() {
     clipboardText = 'Ignored';
     await pasteImageFromMenu(tester);
     expect(find.byTooltip('Remove image'), findsOneWidget);
-    expect(captureField(tester).controller!.text, isEmpty);
+    expect(fieldText(tester), isEmpty);
 
     await tester.tap(find.byTooltip('Remove image'));
     await tester.pump();
@@ -1004,7 +1143,7 @@ void main() {
     await rightClick(tester, listedImage());
     expect(find.text('Copy image'), findsOneWidget);
 
-    await tester.tap(find.byType(TextField));
+    await tester.tap(find.byType(ThoughtField));
     await tester.pumpAndSettle();
     expect(find.text('Copy image'), findsNothing);
     expect(copiedImage, isNull);
@@ -1202,7 +1341,10 @@ void main() {
     addTearDown(tester.platformDispatcher.clearLocalesTestValue);
     await pumpApp(tester);
 
-    expect(find.text("Qu'est-ce que tu as en tête ?"), findsOneWidget);
+    expect(
+      find.text("Qu'est-ce que tu as en tête ?", findRichText: true),
+      findsOneWidget,
+    );
     expect(find.text("Ce que tu notes s'affiche ici."), findsOneWidget);
   });
 
@@ -1786,7 +1928,7 @@ void main() {
       store.reorder('Errands', ['1', '3', '2']);
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), 'Call mum');
+      await enterText(tester, find.byType(ThoughtField), 'Call mum');
       await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pumpAndSettle();
       store.chooseThemes(store.thoughts.first.id, ['Errands']);
@@ -2069,7 +2211,7 @@ void main() {
         expect(listed('Fix the build'), findsOneWidget);
         expect(listed('Buy bread'), findsNothing);
 
-        await tester.enterText(find.byType(TextField), 'Buy milk');
+        await enterText(tester, find.byType(ThoughtField), 'Buy milk');
         await tester.testTextInput.receiveAction(TextInputAction.send);
         // Not pumpAndSettle: the thought's spinner runs until the AI replies.
         await tester.pump();
@@ -2187,7 +2329,7 @@ void main() {
               )
             : describedAs(['Errands']),
       );
-      await tester.enterText(find.byType(TextField), 'Buy bread');
+      await enterText(tester, find.byType(ThoughtField), 'Buy bread');
       await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pumpAndSettle();
       const error =
@@ -2222,8 +2364,9 @@ void main() {
         ),
       );
 
-      await tester.enterText(
-        find.byType(TextField),
+      await enterText(
+        tester,
+        find.byType(ThoughtField),
         'Bread and milk for the week',
       );
       await tester.testTextInput.receiveAction(TextInputAction.send);
@@ -2256,7 +2399,10 @@ void main() {
 
       await tester.tap(listed('Groceries'));
       await tester.pumpAndSettle();
-      expect(inDialog('Bread and milk for the week'), findsOneWidget);
+      expect(
+        fieldText(tester, find.byType(ThoughtField).last),
+        'Bread and milk for the week',
+      );
     });
 
     testWidgets('a clean-up says what it found outside the open theme', (
@@ -2356,7 +2502,7 @@ void main() {
       expect(find.byTooltip('Clean up'), findsOneWidget);
       expect(store.thoughts.single.themes, isEmpty);
 
-      await tester.enterText(find.byType(TextField), 'Call the garage');
+      await enterText(tester, find.byType(ThoughtField), 'Call the garage');
       await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pumpAndSettle();
       expect(store.thoughts.first.themes, ['Errands']);
@@ -2411,7 +2557,7 @@ void main() {
       final reply = Completer<http.Response>();
       await pumpApp(tester, [], const {}, (request) => reply.future);
 
-      await tester.enterText(find.byType(TextField), 'Buy bread');
+      await enterText(tester, find.byType(ThoughtField), 'Buy bread');
       await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));

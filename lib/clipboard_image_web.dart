@@ -38,6 +38,30 @@ VoidCallback listenToPastedImages({
   return () => web.document.removeEventListener('paste', listener);
 }
 
+/// Calls [onHtml] with the HTML of a paste that has some, when [accept]
+/// returns true. Once [onHtml] returns true, having pasted it, the browser
+/// does not paste its plain text.
+VoidCallback listenToPastedHtml({
+  required bool Function() accept,
+  required bool Function(String html) onHtml,
+}) {
+  final listener = ((web.ClipboardEvent event) {
+    final data = event.clipboardData;
+    // Only along with text: a copied image can come with an <img> alone.
+    if (data == null || data.getData('text/plain').isEmpty || !accept()) {
+      return;
+    }
+    final html = data.getData('text/html');
+    if (html.isNotEmpty && onHtml(html)) event.preventDefault();
+  }).toJS;
+  web.document.addEventListener('paste', listener);
+  return () => web.document.removeEventListener('paste', listener);
+}
+
+/// Pastes come through [listenToPastedHtml] instead, which needs no
+/// permission.
+Future<String?> clipboardHtml() async => null;
+
 web.File? _imageIn(web.DataTransfer? data) {
   // Text wins, as on other platforms: apps such as Word also put a picture of
   // copied text on the clipboard.
