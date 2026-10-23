@@ -76,7 +76,7 @@ void main() {
       (text: 'Bread', done: false),
       (text: 'Milk', done: false),
     ]);
-    expect(tidier.sorting, isFalse);
+    expect(tidier.willSort(groceries), isFalse);
     expect(tidier.failure, isNull);
 
     reply = (request) async => describedAs(['Work']);

@@ -6,9 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
-import 'ai_settings_dialog.dart';
 import 'backup.dart';
-import 'backup_dialog.dart';
 import 'clipboard_image_io.dart'
     if (dart.library.js_interop) 'clipboard_image_web.dart';
 import 'context_menu.dart';
@@ -18,6 +16,7 @@ import 'image_paste.dart';
 import 'l10n/app_localizations.dart';
 import 'list_settings.dart';
 import 'report_error.dart';
+import 'settings_page.dart';
 import 'sidebar.dart';
 import 'sliver_animated_reorderable_list.dart';
 import 'theme.dart';
@@ -362,19 +361,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
-  void _openTidySettings() {
+  void _openSettings() {
     _scaffold.currentState?.closeDrawer();
-    showDialog<void>(
-      context: context,
-      builder: (_) => AiSettingsDialog(tidier: _tidier),
-    );
-  }
-
-  void _openBackup() {
-    _scaffold.currentState?.closeDrawer();
-    showDialog<void>(
-      context: context,
-      builder: (_) => BackupDialog(backup: widget.backup),
+    Navigator.push(
+      context,
+      SettingsPage.route(tidier: _tidier, backup: widget.backup),
     );
   }
 
@@ -602,11 +593,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
             onRename: _renameTheme,
             onDelete: _deleteTheme,
             onReorder: (order) => _listSettings.themeOrder = order,
-            onBackup: _openBackup,
             cleaning: _tidier.cleaning,
             onCleanUp: _tidier.settings == null ? null : _cleanUp,
-            tidying: _tidier.sorting,
-            onTidySettings: _openTidySettings,
+            onSettings: _openSettings,
           );
     return Scaffold(
       key: _scaffold,
@@ -673,8 +662,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  /// Opens the drawer, or the backup and the AI's settings while there is no
-  /// sidebar.
+  /// Opens the drawer, or the AI's clean-up and the settings while there is
+  /// no sidebar.
   Widget _buildToolbar(BuildContext context, {required bool drawer}) {
     final l10n = AppLocalizations.of(context);
     final tidier = _tidier;
@@ -714,11 +703,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 )
               else ...[
                 const Spacer(),
-                IconButton(
-                  tooltip: l10n.backup,
-                  onPressed: _openBackup,
-                  icon: const Icon(Icons.backup_outlined),
-                ),
                 if (tidier.settings != null && _store.thoughts.isNotEmpty)
                   IconButton(
                     tooltip: tidier.cleaning
@@ -733,14 +717,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
                         : const Icon(Icons.auto_fix_high_outlined),
                   ),
                 IconButton(
-                  tooltip: tidier.sorting ? l10n.tidying : l10n.tidySettings,
-                  onPressed: _openTidySettings,
-                  icon: tidier.sorting
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.cleaning_services_outlined),
+                  tooltip: l10n.settings,
+                  onPressed: _openSettings,
+                  icon: const Icon(Icons.settings_outlined),
                 ),
               ],
             ],
@@ -977,6 +956,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 images: _imagesOf(thought),
                 createdAt: thought.createdAt,
                 withDay: _theme != null,
+                sorting: _tidier.willSort(thought),
                 themeButton: switch (thought.themes) {
                   final selected when selected.isNotEmpty && _theme == null =>
                     _ThemeMenu(
@@ -1174,6 +1154,7 @@ class _ThoughtTile extends StatefulWidget {
     required this.images,
     required this.createdAt,
     required this.withDay,
+    required this.sorting,
     required this.themeButton,
     required this.onTap,
     required this.onToggleSubtask,
@@ -1193,6 +1174,10 @@ class _ThoughtTile extends StatefulWidget {
 
   /// Shows the day it was noted rather than the time, unless that is today.
   final bool withDay;
+
+  /// Whether the AI is about to give it themes, which [themeButton] then
+  /// shows.
+  final bool sorting;
 
   /// Under the text and images.
   final Widget? themeButton;
@@ -1219,6 +1204,7 @@ class _ThoughtTileState extends State<_ThoughtTile> {
     final text = widget.title ?? widget.text;
     final subtasks = widget.subtasks;
     final images = widget.images;
+    final footer = widget.sorting ? const _Sorting() : widget.themeButton;
     final createdAt = widget.createdAt;
     final now = DateTime.now();
     final time = Text(
@@ -1322,12 +1308,12 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                                 ],
                               ),
                             ),
-                          if (widget.themeButton case final themeButton?)
+                          if (footer != null)
                             Padding(
                               padding: EdgeInsets.only(
                                 top: images.isEmpty ? 2 : 8,
                               ),
-                              child: themeButton,
+                              child: footer,
                             ),
                         ],
                       ),
@@ -1378,6 +1364,41 @@ class _ThoughtTileState extends State<_ThoughtTile> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Takes the place of the theme button, at its height.
+class _Sorting extends StatelessWidget {
+  const _Sorting();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        minHeight: 28 + theme.visualDensity.baseSizeAdjustment.dy,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(
+            dimension: 14,
+            child: Padding(
+              padding: const EdgeInsets.all(1),
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            AppLocalizations.of(context).tidying,
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ),
     );
   }

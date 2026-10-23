@@ -356,13 +356,19 @@ abstract class AppLocalizations {
   /// **'Create'**
   String get create;
 
-  /// Tooltip of the button that sets up the AI, and title of its dialog.
+  /// Sidebar entry and tooltip of the button that opens the settings page, and that page's title.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settings;
+
+  /// Title of the settings section that sets up the AI.
   ///
   /// In en, this message translates to:
   /// **'AI tidying'**
   String get tidySettings;
 
-  /// Tooltip of the same button while the AI is sorting a new thought.
+  /// Shown under a new thought while the AI is sorting it.
   ///
   /// In en, this message translates to:
   /// **'Tidying'**
@@ -398,7 +404,7 @@ abstract class AppLocalizations {
   /// **'Show'**
   String get show;
 
-  /// First paragraph of the AI tidying dialog.
+  /// First paragraph of the AI tidying settings.
   ///
   /// In en, this message translates to:
   /// **'An AI of your choice sorts each thought by theme as you note it, and gives it a title and subtasks when it needs some. When you ask, it spots the thoughts to merge or delete. Any service compatible with OpenAI\'s API works, including a model running on your computer.'**
@@ -446,13 +452,13 @@ abstract class AppLocalizations {
   /// **'Model'**
   String get tidyModel;
 
-  /// Privacy note at the bottom of the AI tidying dialog.
+  /// Privacy note at the bottom of the AI tidying settings.
   ///
   /// In en, this message translates to:
   /// **'The text of your thoughts is sent to this service. Images stay on this device.'**
   String get tidyPrivacy;
 
-  /// Button of the AI tidying dialog that stops tidying and forgets the settings.
+  /// Button of the AI tidying settings that stops tidying and forgets the settings.
   ///
   /// In en, this message translates to:
   /// **'Turn off'**
@@ -548,19 +554,19 @@ abstract class AppLocalizations {
   /// **'Thoughts merged'**
   String get thoughtsMerged;
 
-  /// Sidebar entry and tooltip of the button that opens the backup dialog, and that dialog's title.
+  /// Title of the settings section that saves and restores a copy.
   ///
   /// In en, this message translates to:
   /// **'Backup'**
   String get backup;
 
-  /// First paragraph of the backup dialog.
+  /// First paragraph of the backup settings.
   ///
   /// In en, this message translates to:
   /// **'A copy of your thoughts and their images, to keep wherever you like, on a cloud drive or a USB stick. Your AI\'s API key stays out of it.'**
   String get backupIntro;
 
-  /// Shown in the backup dialog before any copy was saved from this device.
+  /// Shown in the backup settings before any copy was saved from this device.
   ///
   /// In en, this message translates to:
   /// **'No copy saved yet'**
@@ -572,13 +578,13 @@ abstract class AppLocalizations {
   /// **'{days, plural, =0{Last copy saved today} =1{Last copy saved yesterday} other{Last copy saved {days} days ago}}'**
   String lastBackup(int days);
 
-  /// Button of the backup dialog that saves a zip of every thought where the person picks.
+  /// Button of the backup settings that saves a zip of every thought where the person picks.
   ///
   /// In en, this message translates to:
   /// **'Save a copy'**
   String get saveBackup;
 
-  /// Button of the backup dialog that opens a saved copy and adds back what it holds.
+  /// Button of the backup settings that opens a saved copy and adds back what it holds.
   ///
   /// In en, this message translates to:
   /// **'Restore a copy'**
@@ -590,7 +596,7 @@ abstract class AppLocalizations {
   /// **'Restoring adds the thoughts missing here, and deletes nothing.'**
   String get restoreHelp;
 
-  /// Shown in the backup dialog after a restore.
+  /// Shown in the backup settings after a restore.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =0{Nothing new: every thought was already here.} =1{1 thought restored.} other{{count} thoughts restored.}}'**
@@ -602,29 +608,23 @@ abstract class AppLocalizations {
   /// **'AI tidying is set up again. Enter your API key in it again if the service needs one.'**
   String get aiRestored;
 
-  /// Error in the backup dialog when making or writing the copy failed.
+  /// Error in the backup settings when making or writing the copy failed.
   ///
   /// In en, this message translates to:
   /// **'Couldn\'t save the copy.'**
   String get backupNotSaved;
 
-  /// Error in the backup dialog when the file picked for a restore can't be read as a backup.
+  /// Error in the backup settings when the file picked for a restore can't be read as a backup.
   ///
   /// In en, this message translates to:
   /// **'This file isn\'t a Headroom copy, or it\'s damaged.'**
   String get notABackup;
 
-  /// Error in the backup dialog when a readable copy could not be written to this device.
+  /// Error in the backup settings when a readable copy could not be written to this device.
   ///
   /// In en, this message translates to:
   /// **'Couldn\'t restore the copy.'**
   String get restoreFailed;
-
-  /// Closes the backup dialog.
-  ///
-  /// In en, this message translates to:
-  /// **'Close'**
-  String get close;
 }
 
 class _AppLocalizationsDelegate

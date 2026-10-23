@@ -43,6 +43,7 @@
   "themesJoin": "Ses pensées rejoindront le thème {theme}, qui existe déjà.",
   "rename": "Renommer",
   "create": "Créer",
+  "settings": "Paramètres",
   "tidySettings": "Rangement par IA",
   "tidying": "Rangement en cours",
   "cleanUpAction": "Faire le ménage",
@@ -86,6 +87,5 @@
   "aiRestored": "Le rangement par IA est rétabli. Saisis à nouveau ta clé API s'il en faut une.",
   "backupNotSaved": "Impossible d'enregistrer la copie.",
   "notABackup": "Ce fichier n'est pas une copie de Headroom, ou il est abîmé.",
-  "restoreFailed": "Impossible de restaurer la copie.",
-  "close": "Fermer"
+  "restoreFailed": "Impossible de restaurer la copie."
 }

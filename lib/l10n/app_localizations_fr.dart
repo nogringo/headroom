@@ -144,6 +144,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get create => 'Créer';
 
   @override
+  String get settings => 'Paramètres';
+
+  @override
   String get tidySettings => 'Rangement par IA';
 
   @override
@@ -318,7 +321,4 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get restoreFailed => 'Impossible de restaurer la copie.';
-
-  @override
-  String get close => 'Fermer';
 }

@@ -46,9 +46,6 @@ class Tidier extends ChangeNotifier {
   var _generation = 0;
 
   AiSettings? get settings => _settings;
-
-  /// Whether a thought is being described.
-  bool get sorting => _running && !_cleaning;
   bool get cleaning => _cleaning;
   TidyFailure? get failure => _failure;
 
@@ -242,6 +239,7 @@ class Tidier extends ChangeNotifier {
       subtasks: described.subtasks,
     );
     _queue.remove(id);
+    notifyListeners();
     await _saveState();
   }
 

@@ -144,6 +144,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get create => 'Create';
 
   @override
+  String get settings => 'Settings';
+
+  @override
   String get tidySettings => 'AI tidying';
 
   @override
@@ -317,7 +320,4 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get restoreFailed => 'Couldn\'t restore the copy.';
-
-  @override
-  String get close => 'Close';
 }

@@ -15,6 +15,7 @@ import 'package:headroom/sliver_animated_reorderable_list.dart';
 import 'package:headroom/thought.dart';
 import 'package:headroom/thought_store.dart';
 import 'package:headroom/tidier.dart';
+import 'package:headroom/tidy_client.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -1210,25 +1211,32 @@ void main() {
       Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
     ]);
     expect(find.byTooltip('Open navigation menu'), findsNothing);
-    expect(find.byTooltip('AI tidying'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
   });
 
-  testWidgets('opens the backup from the toolbar, even with no thought', (
+  testWidgets('opens the settings from the toolbar, even with no thought', (
     tester,
   ) async {
     await pumpApp(tester);
-    await tester.tap(find.byTooltip('Backup'));
+    await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
 
+    expect(find.text('AI tidying'), findsOneWidget);
     expect(find.text('No copy saved yet'), findsOneWidget);
     expect(find.text('Restore a copy'), findsOneWidget);
 
-    await tester.tap(find.text('Close'));
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Restore a copy'), findsNothing);
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(find.text('Restore a copy'), findsNothing);
   });
 
-  testWidgets('opens the backup from the sidebar', (tester) async {
+  testWidgets('opens the settings from the sidebar', (tester) async {
     await pumpApp(tester, [
       Thought(
         id: '1',
@@ -1239,7 +1247,7 @@ void main() {
     ]);
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Backup'));
+    await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
 
     expect(find.text('Save a copy'), findsOneWidget);
@@ -2063,7 +2071,9 @@ void main() {
 
         await tester.enterText(find.byType(TextField), 'Buy milk');
         await tester.testTextInput.receiveAction(TextInputAction.send);
-        await tester.pumpAndSettle();
+        // Not pumpAndSettle: the thought's spinner runs until the AI replies.
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
         expect(listed('Buy milk'), findsOneWidget);
 
         answer.complete();
@@ -2290,7 +2300,7 @@ void main() {
       expect(find.text('This thought looks out of date:'), findsOneWidget);
     });
 
-    testWidgets('is set up from the broom button', (tester) async {
+    testWidgets('is set up in the settings', (tester) async {
       await pumpApp(
         tester,
         [Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now())],
@@ -2311,7 +2321,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byTooltip('Clean up'), findsNothing);
 
-      await tester.tap(find.byTooltip('AI tidying'));
+      await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
       expect(find.text('Turn off'), findsNothing);
       expect(find.text('Z.ai'), findsOneWidget);
@@ -2325,12 +2335,24 @@ void main() {
       expect(find.text('claude-opus-5-5'), findsNothing);
       await tester.tap(find.text('claude-haiku-5-5'));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Save'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
       expect(tidier.settings?.baseUrl, 'https://api.anthropic.com/v1');
       expect(tidier.settings?.apiKey, 'sk');
       expect(tidier.settings?.model, 'claude-haiku-5-5');
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Save'))
+            .onPressed,
+        isNull,
+      );
+      expect(find.text('Turn off'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
       expect(find.byTooltip('Clean up'), findsOneWidget);
       expect(store.thoughts.single.themes, isEmpty);
 
@@ -2338,17 +2360,67 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pumpAndSettle();
       expect(store.thoughts.first.themes, ['Errands']);
-      expect(find.byTooltip('AI tidying'), findsNothing);
+      expect(find.byTooltip('Settings'), findsNothing);
 
       await tester.tap(find.byTooltip('Open navigation menu'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('AI tidying'));
+      expect(inSidebar('Clean up'), findsOneWidget);
+      await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Turn off'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Turn off'));
       await tester.pumpAndSettle();
       expect(tidier.settings, isNull);
+      expect(find.text('Turn off'), findsNothing);
+      expect(find.text('claude-haiku-5-5'), findsNothing);
+    });
+
+    testWidgets('its settings show the AI a restored backup set up', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        [],
+        const {},
+        (request) async => http.Response(jsonEncode({'data': []}), 200),
+      );
+      await tidier.configure(null);
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.text('Turn off'), findsNothing);
+
+      await tidier.restore(
+        const AiSettings(
+          baseUrl: 'https://api.mistral.ai/v1',
+          apiKey: '',
+          model: 'mistral-small',
+        ),
+        [],
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('https://api.mistral.ai/v1'), findsOneWidget);
+      expect(find.text('mistral-small'), findsOneWidget);
+      expect(find.text('Turn off'), findsOneWidget);
+    });
+
+    testWidgets('shows a thought is being sorted until the AI replies', (
+      tester,
+    ) async {
+      final reply = Completer<http.Response>();
+      await pumpApp(tester, [], const {}, (request) => reply.future);
+
+      await tester.enterText(find.byType(TextField), 'Buy bread');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(listed('Tidying'), findsOneWidget);
+
+      reply.complete(describedAs(['Errands']));
+      await tester.pumpAndSettle();
+      expect(listed('Tidying'), findsNothing);
+      expect(listed('Errands'), findsOneWidget);
     });
   });
 }

@@ -5,18 +5,17 @@ import 'backup.dart';
 import 'day_label.dart';
 import 'l10n/app_localizations.dart';
 import 'report_error.dart';
-import 'theme.dart';
 
-class BackupDialog extends StatefulWidget {
-  const BackupDialog({super.key, required this.backup});
+class BackupSection extends StatefulWidget {
+  const BackupSection({super.key, required this.backup});
 
   final Backup backup;
 
   @override
-  State<BackupDialog> createState() => _BackupDialogState();
+  State<BackupSection> createState() => _BackupSectionState();
 }
 
-class _BackupDialogState extends State<BackupDialog> {
+class _BackupSectionState extends State<BackupSection> {
   var _busy = false;
 
   /// What the last restore came to, or why a save or restore failed.
@@ -84,65 +83,51 @@ class _BackupDialogState extends State<BackupDialog> {
     final savedAt = widget.backup.savedAt;
     final outcome = _outcome;
 
-    return AlertDialog(
-      shape: const RoundedRectangleBorder(borderRadius: paperRadius),
-      title: Text(l10n.backup),
-      scrollable: true,
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(l10n.backupIntro, style: theme.textTheme.bodyMedium),
+        const SizedBox(height: 8),
+        Text(
+          savedAt == null
+              ? l10n.noBackupYet
+              : l10n.lastBackup(daysBetween(savedAt, DateTime.now())),
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            Text(l10n.backupIntro, style: theme.textTheme.bodyMedium),
-            const SizedBox(height: 8),
-            Text(
-              savedAt == null
-                  ? l10n.noBackupYet
-                  : l10n.lastBackup(daysBetween(savedAt, DateTime.now())),
-              style: theme.textTheme.bodySmall,
+            FilledButton(
+              onPressed: _busy ? null : _save,
+              child: Text(l10n.saveBackup),
             ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton(
-                  onPressed: _busy ? null : _save,
-                  child: Text(l10n.saveBackup),
-                ),
-                OutlinedButton(
-                  onPressed: _busy ? null : _restore,
-                  child: Text(l10n.restoreBackup),
-                ),
-              ],
+            OutlinedButton(
+              onPressed: _busy ? null : _restore,
+              child: Text(l10n.restoreBackup),
             ),
-            const SizedBox(height: 8),
-            Text(l10n.restoreHelp, style: theme.textTheme.bodySmall),
-            if (_busy) ...[
-              const SizedBox(height: 16),
-              const LinearProgressIndicator(),
-            ] else if (outcome != null) ...[
-              const SizedBox(height: 16),
-              Semantics(
-                liveRegion: true,
-                child: Text(
-                  outcome.message,
-                  style: outcome.failed
-                      ? theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.error,
-                        )
-                      : theme.textTheme.bodyMedium,
-                ),
-              ),
-            ],
           ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.close),
-        ),
+        const SizedBox(height: 8),
+        Text(l10n.restoreHelp, style: theme.textTheme.bodySmall),
+        if (_busy) ...[
+          const SizedBox(height: 16),
+          const LinearProgressIndicator(),
+        ] else if (outcome != null) ...[
+          const SizedBox(height: 16),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              outcome.message,
+              style: outcome.failed
+                  ? theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    )
+                  : theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
       ],
     );
   }
