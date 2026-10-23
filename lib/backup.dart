@@ -19,12 +19,13 @@ typedef _Contents = ({
   Map<String, Uint8List> images,
   AiSettings? ai,
   List<Suggestion> declined,
+  List<String> themes,
   List<String> themeOrder,
 });
 
 /// A zip of the thoughts, their images, the AI's settings without its key,
-/// the clean-ups declined and the themes' order, laid out like the storage
-/// on disk.
+/// the clean-ups declined, the themes and their order, laid out like the
+/// storage on disk.
 class Backup {
   Backup(this._store, this._tidier, this._listSettings, this._storage);
 
@@ -76,6 +77,9 @@ class Backup {
         jsonEncode({'declined': _tidier.declined}),
       );
     }
+    if (_store.themes.isNotEmpty) {
+      files['themes.json'] = utf8.encode(jsonEncode([..._store.themes]));
+    }
     // Not the theme open, which belongs to this device.
     if (_listSettings.themeOrder.isNotEmpty) {
       files['list.json'] = utf8.encode(
@@ -99,8 +103,8 @@ class Backup {
     }
   }
 
-  /// Adds the thoughts missing here, with their images, and never removes
-  /// or changes one. Takes the AI and the declined clean-ups as
+  /// Adds the thoughts missing here with their images, and the themes, and
+  /// never removes or changes one. Takes the AI and the declined clean-ups as
   /// [Tidier.restore] does, and the themes' order as
   /// [ListSettings.restoreThemeOrder] does. Throws a [FormatException] when
   /// [zip] is not a backup.
@@ -115,6 +119,7 @@ class Backup {
       for (final t in contents.thoughts)
         t.copyWith(images: [for (final name in t.images) names[name] ?? name]),
     ]);
+    _store.addThemes(contents.themes);
     _listSettings.restoreThemeOrder(contents.themeOrder);
     final ai = await _tidier.restore(contents.ai, contents.declined);
     return (thoughts: added, ai: ai);
@@ -145,6 +150,10 @@ Future<_Contents> _read(Uint8List zip) async {
         if (json('tidy.json') case {'declined': final List<dynamic> declined})
           for (final item in declined)
             Suggestion.fromJson(item as Map<String, dynamic>),
+      ],
+      themes: [
+        if (json('themes.json') case final List<dynamic> themes)
+          for (final theme in themes) theme as String,
       ],
       themeOrder: [
         if (json('list.json') case {'themeOrder': final List<dynamic> order})

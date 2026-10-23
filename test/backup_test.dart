@@ -207,6 +207,25 @@ void main() {
     expect(to.listSettings.themeOrder, ['Work', 'Home', 'Errands']);
   });
 
+  test('restores the themes, those without a thought too', () async {
+    final from = await open([
+      Thought(id: '1', text: 'Eggs', createdAt: day, themes: ['Errands']),
+    ]);
+    from.store.addThemes(['Home']);
+    final zip = await backupOf(from).create();
+    final files = ZipDecoder().decodeBytes(zip);
+    expect(jsonDecode(utf8.decode(files.find('themes.json')!.content)), [
+      'Errands',
+      'Home',
+    ]);
+    final to = await open([]);
+    to.store.addThemes(['Work']);
+
+    await backupOf(to).restore(zip);
+
+    expect(to.store.themes, {'Work', 'Errands', 'Home'});
+  });
+
   test('turns away a file that is not a backup', () async {
     final to = await open([]);
     final noThoughts = ZipEncoder().encodeBytes(

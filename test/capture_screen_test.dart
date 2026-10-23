@@ -1441,7 +1441,7 @@ void main() {
     expect(listed('Fix the build'), findsNothing);
   });
 
-  testWidgets('opens on the theme it was left on, while it has thoughts', (
+  testWidgets('opens on the theme it was left on, while it exists', (
     tester,
   ) async {
     final now = DateTime.now();
@@ -1468,6 +1468,12 @@ void main() {
     await reopen('Work');
     expect(listed('Fix the build'), findsOneWidget);
     expect(listed('Buy bread'), findsNothing);
+
+    store.addThemes(['Bills']);
+    await reopen('Bills');
+    expect(listed('Fix the build'), findsNothing);
+    expect(listed('Buy bread'), findsNothing);
+    expect(find.text('What you note shows up here.'), findsOneWidget);
 
     await reopen('Gone');
     expect(find.text('All'), findsOneWidget);
@@ -1765,6 +1771,50 @@ void main() {
       expect(order(), ['Errands', 'Études', 'Work']);
       expect(listSettings.theme, 'Work');
       expect(listed('Fix the build'), findsOneWidget);
+    });
+
+    testWidgets('keeps a theme once its last thought is deleted', (
+      tester,
+    ) async {
+      await pumpThemes(tester);
+      await tester.tap(inSidebar('Work'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(listed('Fix the build'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Delete'));
+      await tester.pumpAndSettle();
+      expect(listSettings.theme, 'Work');
+      expect(find.text('What you note shows up here.'), findsOneWidget);
+
+      await tester.tap(inSidebar('All'));
+      await tester.pumpAndSettle();
+      expect(order(), ['Errands', 'Études', 'Work']);
+    });
+
+    testWidgets('creates a theme, which opens empty', (tester) async {
+      await pumpThemes(tester);
+      Future<void> create(String name) async {
+        await tester.tap(inSidebar('New theme'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.widgetWithText(TextField, 'Theme name'),
+          name,
+        );
+        await tester.pump();
+        await tester.tap(find.text('Create'));
+        await tester.pumpAndSettle();
+      }
+
+      await create('Bills');
+      expect(order(), ['Bills', 'Errands', 'Études', 'Work']);
+      expect(listSettings.theme, 'Bills');
+      expect(find.text('What you note shows up here.'), findsOneWidget);
+
+      await create('work');
+      expect(listSettings.theme, 'Work');
+      expect(listed('Fix the build'), findsOneWidget);
+      expect(store.themes, hasLength(4));
     });
 
     testWidgets('a click that wobbles still opens the theme', (tester) async {

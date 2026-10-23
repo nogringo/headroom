@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -21,11 +22,16 @@ class ThoughtStore extends ChangeNotifier {
 
   final ThoughtStorage _storage;
   final List<Thought> _thoughts = [];
+  final Set<String> _themes = {};
   Future<void> _pendingWrite = Future.value();
   bool _saveFailed = false;
 
   /// Newest first.
   List<Thought> get thoughts => UnmodifiableListView(_thoughts);
+
+  /// Every theme of a thought, and those left with none, until
+  /// [removeTheme].
+  Set<String> get themes => UnmodifiableSetView(_themes);
 
   bool get saveFailed => _saveFailed;
 
@@ -33,7 +39,16 @@ class ThoughtStore extends ChangeNotifier {
     _thoughts
       ..clear()
       ..addAll(await _storage.read());
-    notifyListeners();
+    final saved = await _readThemes();
+    _themes
+      ..clear()
+      ..addAll(saved);
+    // Saved before themes outlived their thoughts, or by a write that failed.
+    if (_thoughts.any((t) => !saved.containsAll(t.themes))) {
+      _changed();
+    } else {
+      notifyListeners();
+    }
     // Drops images pasted but never sent, and those of deleted thoughts.
     // Done here rather than on delete so that undo keeps working.
     try {
@@ -139,10 +154,17 @@ class ThoughtStore extends ChangeNotifier {
     _changed();
   }
 
+  /// Adds the [themes] missing, with no thought in them yet.
+  void addThemes(Iterable<String> themes) {
+    final count = _themes.length;
+    _themes.addAll(themes);
+    if (_themes.length > count) _changed();
+  }
+
   /// Moves every thought of [from] to [to], which may already hold some.
   void renameTheme(String from, String to) {
-    if (from == to) return;
-    var changed = false;
+    if (from == to || !_themes.remove(from)) return;
+    _themes.add(to);
     for (final (index, thought) in _thoughts.indexed) {
       if (!thought.themes.contains(from)) continue;
       final ranks = {...thought.ranks};
@@ -153,14 +175,14 @@ class ThoughtStore extends ChangeNotifier {
             .toList(),
         ranks: ranks,
       );
-      changed = true;
     }
-    if (changed) _changed();
+    _changed();
   }
 
-  /// Takes [theme] off every thought, which stays. Returns the thoughts it
-  /// changed as they were, for [restoreThemes].
+  /// Takes [theme] off every thought, which stays, and drops it. Returns the
+  /// thoughts it changed as they were, for [restoreTheme].
   List<Thought> removeTheme(String theme) {
+    if (!_themes.remove(theme)) return [];
     final originals = <Thought>[];
     for (final (index, thought) in _thoughts.indexed) {
       if (!thought.themes.contains(theme)) continue;
@@ -173,12 +195,14 @@ class ThoughtStore extends ChangeNotifier {
         ranks: {...thought.ranks}..remove(theme),
       );
     }
-    if (originals.isNotEmpty) _changed();
+    _changed();
     return originals;
   }
 
-  /// Gives the thoughts a [removeTheme] changed back their themes.
-  void restoreThemes(List<Thought> originals) {
+  /// Brings back the [theme] a [removeTheme] dropped, and gives the
+  /// thoughts it changed back their themes.
+  void restoreTheme(String theme, List<Thought> originals) {
+    _themes.add(theme);
     for (final original in originals) {
       final index = _thoughts.indexWhere((t) => t.id == original.id);
       if (index == -1) continue;
@@ -293,13 +317,29 @@ class ThoughtStore extends ChangeNotifier {
   /// Completes once every change made so far has been written.
   Future<void> flush() => _pendingWrite;
 
+  Future<Set<String>> _readThemes() async {
+    try {
+      if (await _storage.readValue('themes') case final String json) {
+        return {...(jsonDecode(json) as List<dynamic>).cast<String>()};
+      }
+    } catch (error, stack) {
+      reportError(error, stack);
+    }
+    return {};
+  }
+
   void _changed() {
+    for (final thought in _thoughts) {
+      _themes.addAll(thought.themes);
+    }
     notifyListeners();
     final snapshot = List.of(_thoughts);
+    final themes = jsonEncode([..._themes]);
     // Each write carries the full list, so a failed write is healed by the next one.
     _pendingWrite = _pendingWrite.then((_) async {
       try {
         await _storage.write(snapshot);
+        await _storage.writeValue('themes', themes);
         _setSaveFailed(false);
       } catch (error, stack) {
         reportError(error, stack);

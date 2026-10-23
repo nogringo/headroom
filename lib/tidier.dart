@@ -223,7 +223,7 @@ class Tidier extends ChangeNotifier {
       () => _client.describe(
         settings,
         thought,
-        themes: {for (final t in _store.thoughts) ...t.themes}.toList(),
+        themes: _store.themes.toList(),
         chosen: [
           for (final t in _store.thoughts)
             if (t.themesChosen && t.themes.isNotEmpty) t,

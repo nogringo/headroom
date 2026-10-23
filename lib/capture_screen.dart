@@ -169,7 +169,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// thoughts that will get none. Empty when there is no sidebar.
   List<String> _sidebarThemes() {
     final theme = _theme;
-    final themes = {for (final t in _store.thoughts) ...t.themes, ?theme};
+    final themes = {..._store.themes, ?theme};
     if (themes.isEmpty) return const [];
     final noThemeOpen = themes.remove('');
     return [
@@ -202,10 +202,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
     // Global rather than Shortcuts: a click elsewhere leaves the focus above
     // this screen, out of their reach.
     HardwareKeyboard.instance.addHandler(_onKey);
-    final theme = _theme;
-    if (theme != null && !_store.thoughts.any((t) => _isIn(t, theme))) {
-      _listSettings.theme = null;
-    }
+    final gone = switch (_theme) {
+      null => false,
+      '' => !_store.thoughts.any((t) => t.themes.isEmpty),
+      final theme => !_store.themes.contains(theme),
+    };
+    if (gone) _listSettings.theme = null;
   }
 
   @override
@@ -430,9 +432,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
-  List<String> _themes() => orderedThemes({
-    for (final t in _store.thoughts) ...t.themes,
-  }, _listSettings.themeOrder);
+  List<String> _themes() =>
+      orderedThemes(_store.themes, _listSettings.themeOrder);
 
   /// Says what the AI found when the open theme does not show it.
   Future<void> _cleanUp() async {
@@ -449,6 +450,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
           ? null
           : SnackBarAction(label: l10n.show, onPressed: () => _open(null)),
     );
+  }
+
+  /// Opens a new theme, or the one its name spells.
+  Future<void> _createTheme() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => ThemeNameDialog(themes: _themes()),
+    );
+    if (name == null) return;
+    _store.addThemes([name]);
+    _open(name);
   }
 
   /// Renames [theme], which joins another when it takes its name.
@@ -471,7 +483,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (open) _open(null);
     final originals = _store.removeTheme(theme);
     _offerUndo(AppLocalizations.of(context).themeDeleted, () {
-      _store.restoreThemes(originals);
+      _store.restoreTheme(theme, originals);
       if (open) _open(theme);
     });
   }
@@ -602,6 +614,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             themes: themes,
             selected: _theme,
             onSelect: _open,
+            onCreate: _createTheme,
             onRename: _renameTheme,
             onDelete: _deleteTheme,
             onReorder: (order) => _listSettings.themeOrder = order,
@@ -819,7 +832,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (_store.thoughts.isEmpty)
+                  if (_rows.isEmpty)
                     Padding(
                       padding: inset.copyWith(top: 24),
                       child: Text(

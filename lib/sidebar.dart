@@ -8,14 +8,15 @@ import 'l10n/app_localizations.dart';
 import 'reordering.dart';
 import 'theme.dart';
 
-/// Opens every thought or a single theme's, which it can rename, move and
-/// delete, with the AI's clean-up and the settings below.
+/// Opens every thought or a single theme's, which it can create, rename,
+/// move and delete, with the AI's clean-up and the settings below.
 class Sidebar extends StatelessWidget {
   const Sidebar({
     super.key,
     required this.themes,
     required this.selected,
     required this.onSelect,
+    required this.onCreate,
     required this.onRename,
     required this.onDelete,
     required this.onReorder,
@@ -30,6 +31,7 @@ class Sidebar extends StatelessWidget {
   /// Null for every thought.
   final String? selected;
   final ValueChanged<String?> onSelect;
+  final VoidCallback onCreate;
   final ValueChanged<String> onRename;
   final ValueChanged<String> onDelete;
 
@@ -144,7 +146,20 @@ class Sidebar extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 12),
               child: entry(null, l10n.allThoughts),
             ),
-            footer: themes.contains('') ? entry('', l10n.noTheme) : null,
+            footer: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (themes.contains('')) entry('', l10n.noTheme),
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: _Entry(
+                    leading: const Icon(Icons.add_rounded),
+                    label: l10n.newTheme,
+                    onTap: onCreate,
+                  ),
+                ),
+              ],
+            ),
             onReorderItem: move,
             proxyDecorator: liftDragged,
             children: [

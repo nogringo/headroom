@@ -182,13 +182,57 @@ void main() {
       ]);
       expect(store.thoughts.last.ranks, isEmpty);
 
-      store.restoreThemes(originals);
+      store.restoreTheme('Errands', originals);
       await store.flush();
       expect(storage.saved.map((t) => t.themes), [
         ['Errands', 'Food'],
         ['Errands'],
       ]);
       expect(store.thoughts.last.rankIn('Errands'), rank);
+    });
+
+    test('keeps a theme once its last thought is gone', () async {
+      final thought = store.add('Buy milk')!;
+      store
+        ..chooseThemes(thought.id, ['Errands'])
+        ..remove(thought.id);
+      expect(store.themes, {'Errands'});
+
+      await store.flush();
+      final reopened = ThoughtStore(storage);
+      await reopened.load();
+      expect(reopened.themes, {'Errands'});
+    });
+
+    test('adds, renames and deletes a theme with no thought', () async {
+      store.addThemes(['Errands']);
+      store.renameTheme('Errands', 'Shopping');
+      expect(store.themes, {'Shopping'});
+
+      expect(store.removeTheme('Shopping'), isEmpty);
+      expect(store.themes, isEmpty);
+      store.restoreTheme('Shopping', []);
+      expect(store.themes, {'Shopping'});
+
+      store.removeTheme('Shopping');
+      await store.flush();
+      final reopened = ThoughtStore(storage);
+      await reopened.load();
+      expect(reopened.themes, isEmpty);
+    });
+
+    test('keeps the themes of thoughts saved before themes were', () async {
+      final now = DateTime.now();
+      storage.saved = [
+        Thought(id: '1', text: 'Buy milk', createdAt: now, themes: ['Food']),
+      ];
+      await store.load();
+      store.remove('1');
+      await store.flush();
+
+      final reopened = ThoughtStore(storage);
+      await reopened.load();
+      expect(reopened.themes, {'Food'});
     });
 
     test('merges thoughts into the newest and unmerges them', () async {
