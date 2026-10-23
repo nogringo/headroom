@@ -97,19 +97,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noTheme => 'No theme';
 
   @override
-  String get theme => 'Theme';
+  String get themes => 'Themes';
 
   @override
-  String get changeTheme => 'Change theme';
+  String get changeThemes => 'Change themes';
 
   @override
-  String get chooseTheme => 'Choose a theme';
+  String get chooseThemes => 'Choose themes';
 
   @override
   String get newThemeItem => 'New theme...';
-
-  @override
-  String get letAiChoose => 'Let the AI choose';
 
   @override
   String get newTheme => 'New theme';
@@ -138,8 +135,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tidying => 'Tidying';
 
   @override
+  String get cleanUpAction => 'Clean up';
+
+  @override
+  String get cleaningUp => 'Cleaning up';
+
+  @override
+  String get nothingToCleanUp => 'No repeated or out-of-date thoughts.';
+
+  @override
+  String suggestionsElsewhere(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count suggestions, in All',
+      one: '1 suggestion, in All',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get show => 'Show';
+
+  @override
   String get tidyIntro =>
-      'An AI of your choice sorts your thoughts by theme as you note them, and spots the ones to merge or delete. Any service compatible with OpenAI\'s API works, including a model running on your computer.';
+      'An AI of your choice sorts each thought by theme as you note it, and gives it a title and subtasks when it needs some. When you ask, it spots the thoughts to merge or delete. Any service compatible with OpenAI\'s API works, including a model running on your computer.';
 
   @override
   String get tidyAddress => 'API address';

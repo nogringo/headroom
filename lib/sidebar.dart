@@ -8,7 +8,7 @@ import 'reordering.dart';
 import 'theme.dart';
 
 /// Opens every thought or a single theme's, which it can rename and move,
-/// with the backup and the AI's settings below.
+/// with the backup, the AI's clean-up and its settings below.
 class Sidebar extends StatelessWidget {
   const Sidebar({
     super.key,
@@ -18,6 +18,8 @@ class Sidebar extends StatelessWidget {
     required this.onRename,
     required this.onReorder,
     required this.onBackup,
+    required this.cleaning,
+    required this.onCleanUp,
     required this.tidying,
     required this.onTidySettings,
   });
@@ -33,6 +35,10 @@ class Sidebar extends StatelessWidget {
   /// Called with every named theme, in their new order.
   final ValueChanged<List<String>> onReorder;
   final VoidCallback onBackup;
+  final bool cleaning;
+
+  /// Null hides the clean-up, while no AI is set up.
+  final VoidCallback? onCleanUp;
   final bool tidying;
   final VoidCallback onTidySettings;
 
@@ -138,6 +144,17 @@ class Sidebar extends StatelessWidget {
                 label: l10n.backup,
                 onTap: onBackup,
               ),
+              if (onCleanUp case final onCleanUp?)
+                _Entry(
+                  leading: cleaning
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.auto_fix_high_outlined),
+                  label: cleaning ? l10n.cleaningUp : l10n.cleanUpAction,
+                  onTap: cleaning ? null : onCleanUp,
+                ),
               _Entry(
                 leading: tidying
                     ? const SizedBox.square(
@@ -167,7 +184,9 @@ class _Entry extends StatelessWidget {
   });
 
   final String label;
-  final VoidCallback onTap;
+
+  /// Null while it has nothing to do.
+  final VoidCallback? onTap;
   final bool selected;
   final Widget? leading;
   final Widget? trailing;

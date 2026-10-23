@@ -118,27 +118,23 @@
   },
   "noTheme": "No theme",
   "@noTheme": {
-    "description": "Sidebar entry for the thoughts without a theme. Also the edit dialog's theme menu item that takes a thought out of its theme, while no AI is set up."
+    "description": "Sidebar entry for the thoughts without a theme."
   },
-  "theme": "Theme",
-  "@theme": {
-    "description": "Tooltip of the edit dialog's button that shows the thought's theme and opens a menu to change it."
+  "themes": "Themes",
+  "@themes": {
+    "description": "Tooltip of the edit dialog's button that shows the thought's themes and opens a menu to change them."
   },
-  "changeTheme": "Change theme",
-  "@changeTheme": {
-    "description": "Tooltip of the theme shown under a thought in the list of every thought, which opens a menu to change it."
+  "changeThemes": "Change themes",
+  "@changeThemes": {
+    "description": "Tooltip of the themes shown under a thought in the list of every thought, which opens a menu to change them."
   },
-  "chooseTheme": "Choose a theme",
-  "@chooseTheme": {
-    "description": "Label of the edit dialog's theme button while the thought has no theme."
+  "chooseThemes": "Choose themes",
+  "@chooseThemes": {
+    "description": "Label of the edit dialog's themes button while the thought has none."
   },
   "newThemeItem": "New theme...",
   "@newThemeItem": {
-    "description": "Item of the edit dialog's theme menu that asks for the name of a theme to create."
-  },
-  "letAiChoose": "Let the AI choose",
-  "@letAiChoose": {
-    "description": "Item of the edit dialog's theme menu that hands a theme the person chose back to the AI, which then sorts the thought itself."
+    "description": "Item of the theme menu that asks for the name of a theme to create."
   },
   "newTheme": "New theme",
   "@newTheme": {
@@ -175,9 +171,34 @@
   },
   "tidying": "Tidying",
   "@tidying": {
-    "description": "Tooltip of the same button while the AI is sorting the thoughts."
+    "description": "Tooltip of the same button while the AI is sorting a new thought."
   },
-  "tidyIntro": "An AI of your choice sorts your thoughts by theme as you note them, and spots the ones to merge or delete. Any service compatible with OpenAI's API works, including a model running on your computer.",
+  "cleanUpAction": "Clean up",
+  "@cleanUpAction": {
+    "description": "Button that asks the AI to look over every thought for some to merge or delete."
+  },
+  "cleaningUp": "Cleaning up",
+  "@cleaningUp": {
+    "description": "Label of the same button while the AI looks over the thoughts."
+  },
+  "nothingToCleanUp": "No repeated or out-of-date thoughts.",
+  "@nothingToCleanUp": {
+    "description": "Shown when the AI looked over every thought and found nothing to merge or delete."
+  },
+  "suggestionsElsewhere": "{count, plural, =1{1 suggestion, in All} other{{count} suggestions, in All}}",
+  "@suggestionsElsewhere": {
+    "description": "Shown when the AI found clean-ups about thoughts outside the open theme. The list of every thought shows them.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "show": "Show",
+  "@show": {
+    "description": "Action beside the suggestions found elsewhere, which opens the list of every thought."
+  },
+  "tidyIntro": "An AI of your choice sorts each thought by theme as you note it, and gives it a title and subtasks when it needs some. When you ask, it spots the thoughts to merge or delete. Any service compatible with OpenAI's API works, including a model running on your computer.",
   "@tidyIntro": {
     "description": "First paragraph of the AI tidying dialog."
   },

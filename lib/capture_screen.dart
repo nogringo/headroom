@@ -100,8 +100,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// The images pasted into the field, waiting to be sent.
   var _attachments = <PastedImage>[];
 
-  /// Thoughts noted or edited in the open theme, kept in it until the AI
-  /// gives them theirs.
+  /// Thoughts noted in the open theme, kept in it until the AI gives them
+  /// theirs.
   final _notedHere = <String>{};
 
   /// What the list shows, kept in step with the store by [_syncRows].
@@ -122,27 +122,33 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (theme == null) return _rowsOf(_store.thoughts, withHeadings: true);
     final thoughts = [
       for (final t in _store.thoughts)
-        if ((t.theme ?? '') == theme ||
-            (t.theme == null && _notedHere.contains(t.id)))
+        if (_isIn(t, theme) || (t.themes.isEmpty && _notedHere.contains(t.id)))
           t,
     ];
     // Stable, so that thoughts of equal rank stay newest first.
-    mergeSort(thoughts, compare: (a, b) => b.rank.compareTo(a.rank));
+    mergeSort(
+      thoughts,
+      compare: (a, b) => b.rankIn(theme).compareTo(a.rankIn(theme)),
+    );
     return _rowsOf(thoughts, withHeadings: false);
   }
+
+  /// Whether [thought] is listed under [theme], '' for no theme.
+  bool _isIn(Thought thought, String theme) =>
+      theme.isEmpty ? thought.themes.isEmpty : thought.themes.contains(theme);
 
   /// The themes the sidebar opens, in the person's order, then '' for the
   /// thoughts that will get none. Empty when there is no sidebar.
   List<String> _sidebarThemes() {
     final theme = _theme;
-    final themes = {for (final t in _store.thoughts) ?t.theme, ?theme};
+    final themes = {for (final t in _store.thoughts) ...t.themes, ?theme};
     if (themes.isEmpty) return const [];
     final noThemeOpen = themes.remove('');
     return [
       ...orderedThemes(themes, _listSettings.themeOrder),
       // Not for the thoughts the AI is about to sort, which would flicker.
       if (noThemeOpen ||
-          _store.thoughts.any((t) => t.theme == null && !_tidier.willSort(t)))
+          _store.thoughts.any((t) => t.themes.isEmpty && !_tidier.willSort(t)))
         '',
     ];
   }
@@ -163,8 +169,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     // this screen, out of their reach.
     HardwareKeyboard.instance.addHandler(_onKey);
     final theme = _theme;
-    if (theme != null &&
-        !_store.thoughts.any((t) => (t.theme ?? '') == theme)) {
+    if (theme != null && !_store.thoughts.any((t) => _isIn(t, theme))) {
       _listSettings.theme = null;
     }
   }
@@ -217,6 +222,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     // Its id is only known now, after the store has told the list.
     _notedHere.add(thought.id);
     _syncRows();
+    _tidier.noted(thought);
     _input.clear();
     setState(() => _attachments = []);
     _inputFocus.requestFocus();
@@ -302,7 +308,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   void _move(int from, int to) {
     // Before the store tells the list, which then has nothing to animate.
     _rows.insert(to, _rows.removeAt(from));
-    _store.reorder([for (final row in _rows) row.thought!.id]);
+    _store.reorder(_theme!, [for (final row in _rows) row.thought!.id]);
   }
 
   void _merge(Merge suggestion) {
@@ -369,23 +375,43 @@ class _CaptureScreenState extends State<CaptureScreen> {
         store: _store,
         thought: thought,
         themes: _themes(),
-        aiSorts: _tidier.settings != null,
         onDelete: () => _remove(thought),
       ),
     );
     if (edit == null) return;
-    // New text drops the theme, which would take it out of this one.
-    _notedHere.add(thought.id);
     _store.update(thought.id, text: edit.text, images: edit.images);
-    if (edit.theme != thought.theme ||
-        edit.themeChosen != thought.themeChosen) {
-      _store.chooseTheme(thought.id, edit.themeChosen ? edit.theme : null);
+    if (!listEquals(edit.themes, thought.themes)) {
+      _store.chooseThemes(thought.id, edit.themes);
     }
   }
 
   List<String> _themes() => orderedThemes({
-    for (final t in _store.thoughts) ?t.theme,
+    for (final t in _store.thoughts) ...t.themes,
   }, _listSettings.themeOrder);
+
+  /// Says what the AI found when the open theme does not show it.
+  Future<void> _cleanUp() async {
+    _scaffold.currentState?.closeDrawer();
+    final found = await _tidier.cleanUp();
+    if (!mounted || found == null) return;
+    final shown = {for (final row in _rows) ?row.thought?.id};
+    if (_tidier.suggestions.any((s) => s.ids.any(shown.contains))) return;
+    final l10n = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            found == 0
+                ? l10n.nothingToCleanUp
+                : l10n.suggestionsElsewhere(found),
+          ),
+          action: found == 0
+              ? null
+              : SnackBarAction(label: l10n.show, onPressed: () => _open(null)),
+        ),
+      );
+  }
 
   /// Renames the open [theme], which joins another when it takes its name.
   Future<void> _renameTheme(String theme) async {
@@ -555,7 +581,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
             onRename: _renameTheme,
             onReorder: (order) => _listSettings.themeOrder = order,
             onBackup: _openBackup,
-            tidying: _tidier.working,
+            cleaning: _tidier.cleaning,
+            onCleanUp: _tidier.settings == null ? null : _cleanUp,
+            tidying: _tidier.sorting,
             onTidySettings: _openTidySettings,
           );
     return Scaffold(
@@ -669,10 +697,23 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   onPressed: _openBackup,
                   icon: const Icon(Icons.backup_outlined),
                 ),
+                if (tidier.settings != null && _store.thoughts.isNotEmpty)
+                  IconButton(
+                    tooltip: tidier.cleaning
+                        ? l10n.cleaningUp
+                        : l10n.cleanUpAction,
+                    onPressed: tidier.cleaning ? null : _cleanUp,
+                    icon: tidier.cleaning
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_fix_high_outlined),
+                  ),
                 IconButton(
-                  tooltip: tidier.working ? l10n.tidying : l10n.tidySettings,
+                  tooltip: tidier.sorting ? l10n.tidying : l10n.tidySettings,
                   onPressed: _openTidySettings,
-                  icon: tidier.working
+                  icon: tidier.sorting
                       ? const SizedBox.square(
                           dimension: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
@@ -753,7 +794,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: _tidier.retry,
+                      onPressed: _tidier.cleanUpFailed
+                          ? _cleanUp
+                          : _tidier.retry,
                       child: Text(l10n.retry),
                     ),
                   ],
@@ -861,41 +904,53 @@ class _CaptureScreenState extends State<CaptureScreen> {
           child: moves.draggable(
             _ThoughtTile(
               text: thought.text,
+              title: thought.title,
+              subtasks: thought.subtasks,
               images: _imagesOf(thought),
               createdAt: thought.createdAt,
               withDay: _theme != null,
-              themeButton: switch (thought.theme) {
-                final theme? when _theme == null => _ThemeMenu(
-                  theme: theme,
-                  chosen: thought.themeChosen,
-                  themes: _themes(),
-                  aiSorts: _tidier.settings != null,
-                  onChoose: (theme) => _store.chooseTheme(thought.id, theme),
-                  // Else the tooltip ends up on the thought rather than here.
-                  builder: (context, toggle) => MergeSemantics(
-                    child: Tooltip(
-                      message: l10n.changeTheme,
-                      child: TextButton.icon(
-                        style: TextButton.styleFrom(
-                          foregroundColor: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                          textStyle: Theme.of(context).textTheme.bodySmall,
-                          // Lines the label up with the text above.
-                          padding: const EdgeInsetsDirectional.only(end: 8),
-                          minimumSize: const Size(0, 28),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              themeButton: switch (thought.themes) {
+                final themes when themes.isNotEmpty && _theme == null =>
+                  _ThemeMenu(
+                    selected: themes,
+                    themes: _themes(),
+                    onChoose: (themes) =>
+                        _store.chooseThemes(thought.id, themes),
+                    // Else the tooltip ends up on the thought rather than here.
+                    builder: (context, toggle) => MergeSemantics(
+                      child: Tooltip(
+                        message: l10n.changeThemes,
+                        child: TextButton.icon(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                            textStyle: Theme.of(context).textTheme.bodySmall,
+                            // Lines the label up with the text above.
+                            padding: const EdgeInsetsDirectional.only(end: 8),
+                            minimumSize: const Size(0, 28),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: toggle,
+                          icon: const Icon(
+                            Icons.label_outline_rounded,
+                            size: 14,
+                          ),
+                          label: Text(
+                            orderedThemes(
+                              themes,
+                              _listSettings.themeOrder,
+                            ).join(', '),
+                          ),
                         ),
-                        onPressed: toggle,
-                        icon: const Icon(Icons.label_outline_rounded, size: 14),
-                        label: Text(theme),
                       ),
                     ),
                   ),
-                ),
                 _ => null,
               },
               onTap: () => _edit(thought),
+              onToggleSubtask: (index) =>
+                  _store.toggleSubtask(thought.id, index),
               onImageTap: (index) => _view(thought.images, index),
               onImageCopy: (index) => _copyImage(thought.images[index]),
               onDelete: () => _remove(thought),
@@ -1045,17 +1100,24 @@ class _CleanUpCard extends StatelessWidget {
 class _ThoughtTile extends StatefulWidget {
   const _ThoughtTile({
     required this.text,
+    required this.title,
+    required this.subtasks,
     required this.images,
     required this.createdAt,
     required this.withDay,
     required this.themeButton,
     required this.onTap,
+    required this.onToggleSubtask,
     required this.onImageTap,
     required this.onImageCopy,
     required this.onDelete,
   });
 
   final String text;
+
+  /// Shown in place of [text], which the thought opens on.
+  final String? title;
+  final List<Subtask> subtasks;
   final List<ImageProvider> images;
   final DateTime createdAt;
 
@@ -1065,6 +1127,7 @@ class _ThoughtTile extends StatefulWidget {
   /// Under the text and images.
   final Widget? themeButton;
   final VoidCallback onTap;
+  final ValueChanged<int> onToggleSubtask;
   final ValueChanged<int> onImageTap;
   final ValueChanged<int> onImageCopy;
   final VoidCallback onDelete;
@@ -1080,7 +1143,8 @@ class _ThoughtTileState extends State<_ThoughtTile> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final text = widget.text;
+    final text = widget.title ?? widget.text;
+    final subtasks = widget.subtasks;
     final images = widget.images;
     final createdAt = widget.createdAt;
     final now = DateTime.now();
@@ -1143,6 +1207,22 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                         children: [
                           if (text.isNotEmpty)
                             Text(text, style: theme.textTheme.bodyLarge),
+                          if (subtasks.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (final (index, subtask)
+                                      in subtasks.indexed)
+                                    _SubtaskRow(
+                                      subtask: subtask,
+                                      onToggle: () =>
+                                          widget.onToggleSubtask(index),
+                                    ),
+                                ],
+                              ),
+                            ),
                           if (images.isNotEmpty)
                             Padding(
                               padding: EdgeInsets.only(
@@ -1222,6 +1302,46 @@ class _ThoughtTileState extends State<_ThoughtTile> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ticked off with a tap anywhere on it, without opening the thought.
+class _SubtaskRow extends StatelessWidget {
+  const _SubtaskRow({required this.subtask, required this.onToggle});
+
+  final Subtask subtask;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final done = subtask.done;
+    return MergeSemantics(
+      child: InkWell(
+        borderRadius: paperRadius,
+        onTap: onToggle,
+        child: Row(
+          children: [
+            Checkbox(
+              value: done,
+              onChanged: (_) => onToggle(),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                subtask.text,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: done ? theme.colorScheme.onSurfaceVariant : null,
+                  decoration: done ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1715,19 +1835,13 @@ class _SubmitOnEnter extends StatelessWidget {
   );
 }
 
-typedef _Edit = ({
-  String text,
-  List<String> images,
-  String? theme,
-  bool themeChosen,
-});
+typedef _Edit = ({String text, List<String> images, List<String> themes});
 
 class _EditDialog extends StatefulWidget {
   const _EditDialog({
     required this.store,
     required this.thought,
     required this.themes,
-    required this.aiSorts,
     required this.onDelete,
   });
 
@@ -1736,9 +1850,6 @@ class _EditDialog extends StatefulWidget {
 
   /// Every theme a thought has, in the sidebar's order, to pick from.
   final List<String> themes;
-
-  /// Whether an AI sorts the thoughts without a theme.
-  final bool aiSorts;
   final VoidCallback onDelete;
 
   @override
@@ -1752,8 +1863,7 @@ class _EditDialogState extends State<_EditDialog> {
     for (final name in widget.thought.images)
       (name: name, image: widget.store.imageNamed(name)),
   ];
-  late String? _theme = widget.thought.theme;
-  late var _themeChosen = widget.thought.themeChosen;
+  late var _themes = widget.thought.themes;
   String? _error;
 
   bool _canSave(String text) => text.trim().isNotEmpty || _images.isNotEmpty;
@@ -1770,8 +1880,7 @@ class _EditDialogState extends State<_EditDialog> {
     Navigator.pop<_Edit>(context, (
       text: _controller.text,
       images: [for (final pasted in _images) pasted.name],
-      theme: _theme,
-      themeChosen: _themeChosen,
+      themes: _themes,
     ));
   }
 
@@ -1870,16 +1979,11 @@ class _EditDialogState extends State<_EditDialog> {
             ),
           const SizedBox(height: 12),
           _ThemeMenu(
-            theme: _theme,
-            chosen: _themeChosen,
+            selected: _themes,
             themes: widget.themes,
-            aiSorts: widget.aiSorts,
-            onChoose: (theme) => setState(() {
-              _theme = theme;
-              _themeChosen = theme != null;
-            }),
+            onChoose: (themes) => setState(() => _themes = themes),
             builder: (context, toggle) => Tooltip(
-              message: l10n.theme,
+              message: l10n.themes,
               child: TextButton.icon(
                 style: TextButton.styleFrom(
                   foregroundColor: scheme.onPrimaryContainer,
@@ -1888,7 +1992,9 @@ class _EditDialogState extends State<_EditDialog> {
                 ),
                 onPressed: toggle,
                 icon: const Icon(Icons.label_outline_rounded, size: 18),
-                label: Text(_theme ?? l10n.chooseTheme),
+                label: Text(
+                  _themes.isEmpty ? l10n.chooseThemes : _themes.join(', '),
+                ),
               ),
             ),
           ),
@@ -1937,26 +2043,21 @@ class _EditDialogState extends State<_EditDialog> {
   }
 }
 
-/// Opens a menu to put a thought in another theme, a new one, or none.
+/// Opens a menu that ticks a thought's themes, and creates new ones. It stays
+/// open, to tick several.
 class _ThemeMenu extends StatelessWidget {
   const _ThemeMenu({
-    required this.theme,
-    required this.chosen,
+    required this.selected,
     required this.themes,
-    required this.aiSorts,
     required this.onChoose,
     required this.builder,
   });
 
-  final String? theme;
-
-  /// Whether the person chose [theme] rather than the AI.
-  final bool chosen;
+  final List<String> selected;
   final List<String> themes;
-  final bool aiSorts;
 
-  /// Null takes the thought out of its theme, for the AI to sort if any.
-  final ValueChanged<String?> onChoose;
+  /// Called with every theme the thought then has, none when empty.
+  final ValueChanged<List<String>> onChoose;
 
   /// The button that opens and closes the menu with `toggle`.
   final Widget Function(BuildContext context, VoidCallback toggle) builder;
@@ -1966,24 +2067,31 @@ class _ThemeMenu extends StatelessWidget {
       context: context,
       builder: (_) => ThemeNameDialog(themes: themes),
     );
-    if (name != null) onChoose(name);
+    if (name != null && !selected.contains(name)) onChoose([...selected, name]);
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final theme = this.theme;
     final named = [
       ...themes,
-      if (theme != null && !themes.contains(theme)) theme,
+      for (final theme in selected)
+        if (!themes.contains(theme)) theme,
     ];
     return MenuAnchor(
       menuChildren: [
         for (final name in named)
-          RadioMenuButton<String>(
-            value: name,
-            groupValue: theme,
-            onChanged: (_) => onChoose(name),
+          CheckboxMenuButton(
+            value: selected.contains(name),
+            closeOnActivate: false,
+            onChanged: (_) => onChoose(
+              selected.contains(name)
+                  ? [
+                      for (final theme in selected)
+                        if (theme != name) theme,
+                    ]
+                  : [...selected, name],
+            ),
             child: Text(name),
           ),
         if (named.isNotEmpty) const Divider(),
@@ -1992,15 +2100,6 @@ class _ThemeMenu extends StatelessWidget {
           onPressed: () => _create(context),
           child: Text(l10n.newThemeItem),
         ),
-        // The AI's own theme is already its choice.
-        if (theme != null && (chosen || !aiSorts))
-          MenuItemButton(
-            leadingIcon: Icon(
-              aiSorts ? Icons.auto_awesome_outlined : Icons.label_off_outlined,
-            ),
-            onPressed: () => onChoose(null),
-            child: Text(aiSorts ? l10n.letAiChoose : l10n.noTheme),
-          ),
       ],
       builder: (context, controller, _) => builder(
         context,

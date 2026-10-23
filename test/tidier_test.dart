@@ -18,18 +18,10 @@ void main() {
   late List<http.Request> requests;
   late Future<http.Response> Function(http.Request) reply;
 
-  Future<Tidier> start(
-    List<Thought> thoughts, {
-    AiSettings? ai = testAi,
-  }) async {
-    storage = InMemoryStorage(thoughts);
-    if (ai != null) storage.values['ai'] = jsonEncode(ai);
-    store = ThoughtStore(storage);
-    await store.load();
+  Future<Tidier> open() async {
     final tidier = Tidier(
       store,
       storage,
-      delay: Duration.zero,
       client: MockClient((request) {
         requests.add(request);
         return reply(request);
@@ -41,107 +33,197 @@ void main() {
     return tidier;
   }
 
+  Future<Tidier> start(
+    List<Thought> thoughts, {
+    AiSettings? ai = testAi,
+  }) async {
+    storage = InMemoryStorage(thoughts);
+    if (ai != null) storage.values['ai'] = jsonEncode(ai);
+    store = ThoughtStore(storage);
+    await store.load();
+    return open();
+  }
+
+  Future<Thought> note(Tidier tidier, String text) async {
+    final thought = store.add(text)!;
+    tidier.noted(thought);
+    await pumpEventQueue();
+    return store.thoughts.firstWhere((t) => t.id == thought.id);
+  }
+
   setUp(() {
     requests = [];
-    reply = (request) async => sortAllInto(request, 'Errands');
+    reply = (request) async => describedAs(['Errands']);
   });
 
-  test('sorts thoughts as they are noted', () async {
+  test('describes each thought as it is noted', () async {
     final tidier = await start([]);
     expect(requests, isEmpty);
+    reply = (request) async => describedAs(
+      ['Errands', 'Home'],
+      title: 'Groceries',
+      subtasks: ['Bread', 'Milk'],
+    );
 
-    store.add('Buy bread');
-    store.add('Call the garage');
-    await pumpEventQueue();
+    final groceries = await note(tidier, 'Buy bread and milk for the week');
 
     expect(requests, hasLength(1));
-    expect(store.thoughts.map((t) => t.theme), ['Errands', 'Errands']);
-    expect(tidier.working, isFalse);
+    expect(sentInput(requests.single)['thought'], groceries.text);
+    expect(groceries.themes, ['Errands', 'Home']);
+    expect(groceries.themesChosen, isFalse);
+    expect(groceries.title, 'Groceries');
+    expect(groceries.subtasks, [
+      (text: 'Bread', done: false),
+      (text: 'Milk', done: false),
+    ]);
+    expect(tidier.sorting, isFalse);
     expect(tidier.failure, isNull);
 
-    store.add('', images: ['photo']);
+    reply = (request) async => describedAs(['Work']);
+    final build = await note(tidier, 'Fix the build');
+    expect(requests, hasLength(2));
+    expect(sentInput(requests.last)['themes'], ['Errands', 'Home']);
+    expect(build.themes, ['Work']);
+    expect(build.title, isNull);
+    expect(build.subtasks, isEmpty);
+
+    tidier.noted(store.add('', images: ['photo'])!);
     await pumpEventQueue();
-    expect(requests, hasLength(1), reason: 'Images alone are not sent');
+    expect(requests, hasLength(2), reason: 'Images alone are not sent');
+  });
+
+  test('asks nothing at launch, on an edit, or about older thoughts', () async {
+    final tidier = await start([
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+      Thought(
+        id: '2',
+        text: 'Fix the build',
+        createdAt: DateTime.now(),
+        themes: ['Work'],
+      ),
+    ]);
+
+    store.update('2', text: 'Fix the tests', images: []);
+    await pumpEventQueue();
+
+    expect(requests, isEmpty);
+    expect(store.thoughts.last.themes, ['Work']);
+    expect(tidier.willSort(store.thoughts.first), isFalse);
   });
 
   test('does nothing until set up', () async {
-    final tidier = await start([
-      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
-    ], ai: null);
+    final tidier = await start([], ai: null);
 
+    await note(tidier, 'Buy bread');
     expect(requests, isEmpty);
 
     await tidier.configure(testAi);
     await pumpEventQueue();
-
-    expect(requests, hasLength(1));
-    expect(store.thoughts.single.theme, 'Errands');
+    expect(requests, isEmpty, reason: 'Thoughts noted before stay as they are');
     expect(jsonDecode(storage.values['ai']!), testAi.toJson());
+
+    expect((await note(tidier, 'Call the garage')).themes, ['Errands']);
   });
 
-  test('asks again about an edited thought', () async {
-    await start([]);
-    final thought = store.add('Buy bread')!;
-    await pumpEventQueue();
-    reply = (request) async => sortAllInto(request, 'Food');
-
-    store.update(thought.id, text: 'Bake bread', images: []);
-    await pumpEventQueue();
-
-    expect(store.thoughts.single.theme, 'Food');
-  });
-
-  test('leaves alone a theme chosen while it was sorting', () async {
-    await start([]);
-    reply = (request) async {
-      store.chooseTheme(store.thoughts.single.id, 'Bakery');
-      return sortAllInto(request, 'Errands');
-    };
-
-    store.add('Buy bread');
-    await pumpEventQueue();
-
-    expect(store.thoughts.single.theme, 'Bakery');
-  });
-
-  test('does not ask about a chosen theme after an edit', () async {
-    await start([
+  test('shows the AI the themes the person chose', () async {
+    final now = DateTime.now();
+    final tidier = await start([
+      Thought(id: '2', text: 'Dune', createdAt: now, themes: ['Books']),
       Thought(
         id: '1',
-        text: 'Buy bread',
-        createdAt: DateTime.now(),
-        theme: 'Bakery',
-        themeChosen: true,
+        text: 'Read Dune',
+        createdAt: now,
+        themes: ['Books', 'Fun'],
+        themesChosen: true,
       ),
     ]);
-    expect(sentList(requests.single).toSort, isEmpty);
 
-    store.update('1', text: 'Bake bread', images: []);
-    await pumpEventQueue();
+    await note(tidier, 'Read Foundation');
 
+    expect(sentInput(requests.single), {
+      'themes': ['Books', 'Fun'],
+      'sortedByOwner': [
+        {
+          'text': 'Read Dune',
+          'themes': ['Books', 'Fun'],
+        },
+      ],
+      'thought': 'Read Foundation',
+    });
+  });
+
+  test('leaves alone themes chosen while it was asking', () async {
+    final tidier = await start([]);
+    reply = (request) async {
+      store.chooseThemes(store.thoughts.single.id, ['Bakery']);
+      return describedAs(['Errands'], title: 'Bread');
+    };
+
+    final thought = await note(tidier, 'Buy bread');
+
+    expect(thought.themes, ['Bakery']);
+    expect(thought.title, 'Bread');
+  });
+
+  test('describes a thought noted offline at the next launch', () async {
+    reply = (request) async => throw http.ClientException('offline');
+    final offline = await start([]);
+
+    final thought = await note(offline, 'Buy bread');
+
+    expect(offline.failure, TidyFailure.unreachable);
+    expect(thought.themes, isEmpty);
+    expect(offline.willSort(thought), isFalse);
+
+    reply = (request) async => describedAs(['Errands']);
+    final online = await open();
+
+    expect(requests, hasLength(2));
+    expect(store.thoughts.single.themes, ['Errands']);
+    expect(online.failure, isNull);
+    expect(jsonDecode(storage.values['tidy']!), isNot(contains('queue')));
+  });
+
+  test('reports a failure until a retry works', () async {
+    reply = (request) async => http.Response(
+      jsonEncode({
+        'error': {'message': 'Invalid API key'},
+      }),
+      401,
+    );
+    final tidier = await start([]);
+
+    await note(tidier, 'Buy bread');
+
+    expect(tidier.failure, TidyFailure.rejectedKey);
+    expect(tidier.failureMessage, 'Invalid API key');
     expect(requests, hasLength(1));
-    expect(store.thoughts.single.theme, 'Bakery');
-  });
 
-  test('does not ask twice about a thought the AI left out', () async {
-    reply = (request) async => chatReply({'themes': {}});
-    await start([
-      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
-    ]);
-
-    store.add('Call the garage');
+    reply = (request) async => describedAs(['Errands']);
+    tidier.retry();
     await pumpEventQueue();
-
-    expect(requests.map((r) => sentList(r).toSort), [
-      [1],
-      [1],
-    ]);
+    expect(tidier.failure, isNull);
+    expect(tidier.failureMessage, isNull);
+    expect(store.thoughts.single.themes, ['Errands']);
   });
 
-  test('keeps suggestions until they are settled', () async {
+  test('reports an unreadable reply as an error', () async {
+    final reported = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = previous);
+    reply = (request) async => chatReply('Sorry, I cannot help.');
+    final tidier = await start([]);
+
+    await note(tidier, 'Buy bread');
+
+    expect(tidier.failure, TidyFailure.failed);
+    expect(reported, hasLength(1));
+  });
+
+  test('cleans up only when asked, and keeps what it found', () async {
     final now = DateTime.now();
     reply = (request) async => chatReply({
-      'themes': {},
       'merges': [
         {
           'thoughts': [1, 2],
@@ -151,17 +233,19 @@ void main() {
       'outdated': [3],
     });
     final tidier = await start([
-      Thought(id: '3', text: 'Buy bread', createdAt: now, theme: 'Errands'),
-      Thought(id: '2', text: 'bread!', createdAt: now, theme: 'Errands'),
-      Thought(id: '1', text: 'Dentist Monday', createdAt: now, theme: 'Health'),
+      Thought(id: '3', text: 'Buy bread', createdAt: now, themes: ['Errands']),
+      Thought(id: '2', text: 'bread!', createdAt: now, themes: ['Errands']),
+      Thought(id: '1', text: 'Dentist Monday', createdAt: now),
     ]);
+    expect(requests, isEmpty);
 
-    expect(tidier.suggestions, hasLength(2));
+    expect(await tidier.cleanUp(), 2);
+    expect(isCleanUp(requests.single), isTrue);
+    expect(tidier.cleaning, isFalse);
     final [merge as Merge, outdated as Outdated] = tidier.suggestions;
     expect(merge.ids, ['3', '2']);
     expect(outdated.id, '1');
 
-    // Reloaded from storage.
     final reloaded = Tidier(store, storage, client: MockClient(reply));
     addTearDown(reloaded.dispose);
     await reloaded.load();
@@ -173,83 +257,50 @@ void main() {
 
     // Declined once, never again, even when the AI proposes it anew.
     reply = (request) async => chatReply({
-      'themes': {},
       'outdated': [
-        for (final t in sentList(request).thoughts)
+        for (final t in sentInput(request)['thoughts'] as List<dynamic>)
           if (t['text'] == 'Dentist Monday') t['n'],
       ],
     });
-    store.add('Water the plants');
-    await pumpEventQueue();
-    expect(requests, hasLength(2));
+    expect(await tidier.cleanUp(), 0);
     expect(tidier.suggestions, isEmpty);
   });
 
   test('ignores a suggestion about a thought edited meanwhile', () async {
-    final thought = Thought(
-      id: '1',
-      text: 'Dentist Monday',
-      createdAt: DateTime.now(),
-      theme: 'Health',
-    );
-    final tidier = await start([thought]);
+    final tidier = await start([
+      Thought(id: '1', text: 'Dentist Monday', createdAt: DateTime.now()),
+    ]);
     reply = (request) async {
       store.update('1', text: 'Dentist next Monday', images: []);
       return chatReply({
-        'themes': {},
         'outdated': [1],
       });
     };
 
-    tidier.retry();
-    await pumpEventQueue();
-
+    expect(await tidier.cleanUp(), 0);
     expect(tidier.suggestions, isEmpty);
   });
 
-  test('reports a failure and waits for the next change', () async {
-    reply = (request) async => http.Response(
-      jsonEncode({
-        'error': {'message': 'Invalid API key'},
-      }),
-      401,
-    );
+  test('a failed clean-up says so, and goes again when asked', () async {
+    reply = (request) async => http.Response('', 429);
     final tidier = await start([
-      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+      Thought(id: '1', text: 'Dentist Monday', createdAt: DateTime.now()),
     ]);
 
-    expect(tidier.failure, TidyFailure.rejectedKey);
-    expect(tidier.failureMessage, 'Invalid API key');
-    expect(requests, hasLength(1));
-    await pumpEventQueue();
-    expect(requests, hasLength(1));
+    expect(await tidier.cleanUp(), isNull);
+    expect(tidier.failure, TidyFailure.limited);
+    expect(tidier.cleanUpFailed, isTrue);
 
-    reply = (request) async => sortAllInto(request, 'Errands');
-    tidier.retry();
-    await pumpEventQueue();
+    reply = (request) async => chatReply({
+      'outdated': [1],
+    });
+    expect(await tidier.cleanUp(), 1);
     expect(tidier.failure, isNull);
-    expect(tidier.failureMessage, isNull);
-    expect(store.thoughts.single.theme, 'Errands');
-  });
-
-  test('reports an unreadable reply as an error', () async {
-    final reported = <FlutterErrorDetails>[];
-    final previous = FlutterError.onError;
-    FlutterError.onError = reported.add;
-    addTearDown(() => FlutterError.onError = previous);
-    reply = (request) async => chatReply('Sorry, I cannot help.');
-
-    final tidier = await start([
-      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
-    ]);
-
-    expect(tidier.failure, TidyFailure.failed);
-    expect(reported, hasLength(1));
+    expect(tidier.cleanUpFailed, isFalse);
   });
 
   test('turning off forgets the settings and the suggestions', () async {
     reply = (request) async => chatReply({
-      'themes': {},
       'outdated': [1],
     });
     final tidier = await start([
@@ -257,16 +308,18 @@ void main() {
         id: '1',
         text: 'Dentist',
         createdAt: DateTime.now(),
-        theme: 'Health',
+        themes: ['Health'],
       ),
     ]);
+    await tidier.cleanUp();
     expect(tidier.suggestions, hasLength(1));
 
     await tidier.configure(null);
 
     expect(tidier.settings, isNull);
     expect(tidier.suggestions, isEmpty);
+    expect(await tidier.cleanUp(), isNull);
     expect(storage.values, isNot(contains('ai')));
-    expect(store.thoughts.single.theme, 'Health');
+    expect(store.thoughts.single.themes, ['Health']);
   });
 }

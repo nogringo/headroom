@@ -26,24 +26,24 @@ http.Response chatReply(Object content) => http.Response(
   headers: {'content-type': 'application/json'},
 );
 
-/// What a tidy request sent: the list of thoughts and the numbers to sort.
-({List<Map<String, dynamic>> thoughts, List<int> toSort}) sentList(
-  http.Request request,
-) {
+/// What a request sent after the instructions: one thought to describe, or
+/// the list to clean up.
+Map<String, dynamic> sentInput(http.Request request) {
   final body = jsonDecode(request.body) as Map<String, dynamic>;
   final messages = body['messages'] as List<dynamic>;
-  final list = jsonDecode(
+  return jsonDecode(
     (messages.last as Map<String, dynamic>)['content'] as String,
   ) as Map<String, dynamic>;
-  return (
-    thoughts: (list['thoughts'] as List<dynamic>).cast(),
-    toSort: (list['toSort'] as List<dynamic>).cast(),
-  );
 }
 
-/// Sorts every thought it is asked about into [theme].
-http.Response sortAllInto(http.Request request, String theme) => chatReply({
-  'themes': {for (final n in sentList(request).toSort) '$n': theme},
-  'merges': <Object>[],
-  'outdated': <Object>[],
-});
+/// Whether [request] asks to clean up the list rather than describe a
+/// thought.
+bool isCleanUp(http.Request request) =>
+    sentInput(request).containsKey('thoughts');
+
+/// The AI's description of a thought.
+http.Response describedAs(
+  List<String> themes, {
+  String title = '',
+  List<String> subtasks = const [],
+}) => chatReply({'themes': themes, 'title': title, 'subtasks': subtasks});

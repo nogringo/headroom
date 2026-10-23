@@ -90,32 +90,54 @@ void main() {
       expect(storage.saved.map((t) => t.text), ['c', 'b', 'a']);
     });
 
-    test('new text drops the theme, new images keep it', () {
-      final thought = store.add('Buy bread')!;
-      store.setThemes({thought.id: 'Errands', 'gone': 'Nowhere'});
-      expect(store.thoughts.single.theme, 'Errands');
-
-      store.update(thought.id, text: 'Buy bread ', images: ['receipt']);
-      expect(store.thoughts.single.theme, 'Errands');
+    test('keeps what the AI gave through an edit', () {
+      final thought = store.add('Buy bread and milk')!;
+      store.annotate(
+        thought.id,
+        themes: ['Errands'],
+        title: 'Groceries',
+        subtasks: ['Bread', 'Milk'],
+      );
+      store.annotate('gone', themes: ['Nowhere']);
 
       store.update(thought.id, text: 'Bake bread', images: ['receipt']);
-      expect(store.thoughts.single.theme, isNull);
+
+      final edited = store.thoughts.single;
+      expect(edited.text, 'Bake bread');
+      expect(edited.themes, ['Errands']);
+      expect(edited.title, 'Groceries');
+      expect(edited.subtasks.map((s) => s.text), ['Bread', 'Milk']);
     });
 
-    test('keeps a chosen theme, even through new text and the AI', () {
+    test('keeps the themes the person chose from the AI', () {
       final thought = store.add('Buy bread')!;
-      store.chooseTheme(thought.id, 'Bakery');
+      store.chooseThemes(thought.id, ['Bakery', 'Errands']);
 
-      store.setThemes({thought.id: 'Errands'});
-      store.update(thought.id, text: 'Bake bread', images: []);
-      expect(store.thoughts.single.theme, 'Bakery');
-      expect(store.thoughts.single.themeChosen, isTrue);
+      store.annotate(thought.id, themes: ['Food'], title: 'Bread');
+      expect(store.thoughts.single.themes, ['Bakery', 'Errands']);
+      expect(store.thoughts.single.themesChosen, isTrue);
+      expect(store.thoughts.single.title, 'Bread');
 
-      store.chooseTheme(thought.id, null);
-      expect(store.thoughts.single.theme, isNull);
-      expect(store.thoughts.single.themeChosen, isFalse);
-      store.setThemes({thought.id: 'Errands'});
-      expect(store.thoughts.single.theme, 'Errands');
+      store.chooseThemes(thought.id, []);
+      expect(store.thoughts.single.themes, isEmpty);
+      expect(store.thoughts.single.themesChosen, isTrue);
+    });
+
+    test('ticks a subtask off and back on', () async {
+      final thought = store.add('Bread, milk')!;
+      store.annotate(thought.id, themes: [], subtasks: ['Bread', 'Milk']);
+
+      store.toggleSubtask(thought.id, 1);
+      await store.flush();
+      expect(storage.saved.single.subtasks, [
+        (text: 'Bread', done: false),
+        (text: 'Milk', done: true),
+      ]);
+
+      store
+        ..toggleSubtask(thought.id, 1)
+        ..toggleSubtask(thought.id, 7);
+      expect(store.thoughts.single.subtasks.last.done, isFalse);
     });
 
     test('renames a theme, which may join another', () async {
@@ -125,20 +147,21 @@ void main() {
         ..add('Buy bread');
       final [bread, milk, build] = store.thoughts;
       store
-        ..setThemes({bread.id: 'Errands', build.id: 'Work'})
-        ..chooseTheme(milk.id, 'Errands');
+        ..annotate(bread.id, themes: ['Errands', 'Food'])
+        ..annotate(build.id, themes: ['Work'])
+        ..chooseThemes(milk.id, ['Errands']);
 
       store.renameTheme('Errands', 'Shopping');
-      expect(store.thoughts.map((t) => t.theme), [
-        'Shopping',
-        'Shopping',
-        'Work',
+      expect(store.thoughts.map((t) => t.themes), [
+        ['Shopping', 'Food'],
+        ['Shopping'],
+        ['Work'],
       ]);
-      expect(store.thoughts.map((t) => t.themeChosen), [false, true, false]);
+      expect(store.thoughts.map((t) => t.themesChosen), [false, true, false]);
 
-      store.renameTheme('Shopping', 'Work');
+      store.renameTheme('Food', 'Shopping');
       await store.flush();
-      expect(storage.saved.map((t) => t.theme), ['Work', 'Work', 'Work']);
+      expect(storage.saved.first.themes, ['Shopping']);
     });
 
     test('merges thoughts into the newest and unmerges them', () async {
@@ -147,7 +170,9 @@ void main() {
         ..add('Call the garage')
         ..add('Buy milk', images: ['list', 'carton']);
       final [newest, middle, oldest] = store.thoughts;
-      store.setThemes({newest.id: 'Errands'});
+      store
+        ..annotate(newest.id, themes: ['Errands'], title: 'Milk')
+        ..chooseThemes(oldest.id, ['Food', 'Errands']);
 
       final merged = store.merge([oldest.id, newest.id], ' Buy milk ')!;
       await store.flush();
@@ -156,7 +181,9 @@ void main() {
       final kept = store.thoughts.first;
       expect(kept.id, newest.id);
       expect(kept.createdAt, newest.createdAt);
-      expect(kept.theme, 'Errands');
+      expect(kept.themes, ['Errands', 'Food']);
+      expect(kept.themesChosen, isTrue);
+      expect(kept.title, isNull);
       expect(kept.images, ['list', 'carton']);
 
       store.unmerge(merged);
@@ -168,10 +195,10 @@ void main() {
 
     test('a new thought ranks above every other', () {
       final first = store.add('first')!;
-      store.reorder([first.id]);
+      store.reorder('', [first.id]);
       final second = store.add('second')!;
 
-      expect(second.rank, greaterThan(first.rank));
+      expect(second.rankIn(''), greaterThan(first.rankIn('')));
     });
 
     test('reorders thoughts with the ranks they hold', () async {
@@ -182,14 +209,14 @@ void main() {
         ..add('Buy bread');
       final [bread, letter, milk, build] = store.thoughts;
 
-      store.reorder([milk.id, bread.id, 'deleted', letter.id]);
+      store.reorder('', [milk.id, bread.id, 'deleted', letter.id]);
       await store.flush();
 
-      final ranks = {for (final t in storage.saved) t.text: t.rank};
-      expect(ranks['Buy milk'], bread.rank);
-      expect(ranks['Buy bread'], letter.rank);
-      expect(ranks['Post the letter'], milk.rank);
-      expect(ranks['Fix the build'], build.rank);
+      final ranks = {for (final t in storage.saved) t.text: t.rankIn('')};
+      expect(ranks['Buy milk'], bread.rankIn(''));
+      expect(ranks['Buy bread'], letter.rankIn(''));
+      expect(ranks['Post the letter'], milk.rankIn(''));
+      expect(ranks['Fix the build'], build.rankIn(''));
       expect(storage.saved.map((t) => t.text), [
         'Buy bread',
         'Post the letter',
@@ -198,34 +225,53 @@ void main() {
       ]);
     });
 
+    test('a move in one theme leaves the others as they were', () {
+      store
+        ..add('Buy milk')
+        ..add('Buy bread');
+      final [bread, milk] = store.thoughts;
+      store
+        ..chooseThemes(milk.id, ['Errands', 'Food'])
+        ..chooseThemes(bread.id, ['Errands', 'Food']);
+
+      store.reorder('Errands', [milk.id, bread.id]);
+
+      final [movedBread, movedMilk] = store.thoughts;
+      expect(movedMilk.rankIn('Errands'), bread.rankIn('Errands'));
+      expect(movedBread.rankIn('Errands'), milk.rankIn('Errands'));
+      expect(movedMilk.rankIn('Food'), milk.rankIn('Food'));
+      expect(movedBread.rankIn('Food'), bread.rankIn('Food'));
+    });
+
     test('a merge takes the highest rank of the thoughts it joins', () {
       store
         ..add('milk')
         ..add('Buy milk');
       final [newest, oldest] = store.thoughts;
-      store.reorder([oldest.id, newest.id]);
+      store.reorder('', [oldest.id, newest.id]);
 
       store.merge([oldest.id, newest.id], 'Buy milk');
 
       expect(store.thoughts.single.id, newest.id);
-      expect(store.thoughts.single.rank, newest.rank);
+      expect(store.thoughts.single.rankIn(''), newest.rankIn(''));
     });
 
-    test('keeps the rank through edits and themes', () {
+    test('keeps the rank through edits, and a renamed theme', () {
       store
         ..add('first')
         ..add('second');
       final [second, first] = store.thoughts;
-      store.reorder([first.id, second.id]);
-      final rank = store.thoughts.last.rank;
+      store
+        ..chooseThemes(first.id, ['Work'])
+        ..chooseThemes(second.id, ['Work'])
+        ..reorder('Work', [first.id, second.id]);
+      final rank = store.thoughts.last.rankIn('Work');
 
       store
         ..update(first.id, text: 'edited', images: [])
-        ..setThemes({first.id: 'Errands'})
-        ..chooseTheme(first.id, 'Work')
         ..renameTheme('Work', 'Jobs');
 
-      expect(store.thoughts.last.rank, rank);
+      expect(store.thoughts.last.rankIn('Jobs'), rank);
     });
 
     test('merges nothing when fewer than two thoughts are left', () {

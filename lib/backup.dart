@@ -113,15 +113,7 @@ class Backup {
     };
     final added = _store.addMissing([
       for (final t in contents.thoughts)
-        Thought(
-          id: t.id,
-          text: t.text,
-          images: [for (final name in t.images) names[name] ?? name],
-          createdAt: t.createdAt,
-          theme: t.theme,
-          themeChosen: t.themeChosen,
-          rank: t.rank,
-        ),
+        t.copyWith(images: [for (final name in t.images) names[name] ?? name]),
     ]);
     _listSettings.restoreThemeOrder(contents.themeOrder);
     final ai = await _tidier.restore(contents.ai, contents.declined);

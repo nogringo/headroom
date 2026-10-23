@@ -46,7 +46,6 @@ void main() {
     final tidier = Tidier(
       store,
       storage,
-      delay: Duration.zero,
       // Turned away like a backup's AI without its key.
       client: MockClient((_) async => http.Response('', 401)),
     );
@@ -92,15 +91,17 @@ void main() {
         text: 'Milk',
         images: [image],
         createdAt: day.add(const Duration(hours: 1)),
-        theme: 'Errands',
-        themeChosen: true,
+        themes: ['Errands', 'Food'],
+        themesChosen: true,
       ),
       Thought(
         id: '1',
-        text: 'Eggs',
+        text: 'Eggs and flour',
         createdAt: day,
-        theme: 'Errands',
-        rank: moved,
+        themes: ['Errands'],
+        title: 'Baking',
+        subtasks: [(text: 'Eggs', done: true), (text: 'Flour', done: false)],
+        ranks: {'Errands': moved},
       ),
     ]);
     final to = await open([]);
@@ -108,11 +109,14 @@ void main() {
     final restored = await backupOf(to).restore(zip);
 
     expect(restored, (thoughts: 2, ai: true));
-    expect(to.store.thoughts.map((t) => t.text), ['Milk', 'Eggs']);
-    expect(to.store.thoughts.first.images, [image]);
-    expect(to.store.thoughts.first.theme, 'Errands');
-    expect(to.store.thoughts.map((t) => t.themeChosen), [true, false]);
-    expect(to.store.thoughts.last.rank, moved);
+    expect(to.store.thoughts.map((t) => t.text), ['Milk', 'Eggs and flour']);
+    final [milk, baking] = to.store.thoughts;
+    expect(milk.images, [image]);
+    expect(milk.themes, ['Errands', 'Food']);
+    expect(to.store.thoughts.map((t) => t.themesChosen), [true, false]);
+    expect(baking.title, 'Baking');
+    expect(baking.subtasks.map((s) => s.done), [true, false]);
+    expect(baking.rankIn('Errands'), moved);
     expect(await to.storage.readImage(image), png);
     expect(to.tidier.settings?.baseUrl, testAi.baseUrl);
     expect(to.tidier.settings?.model, testAi.model);

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+import 'theme_names.dart';
 import 'thought.dart';
 
 /// Any service that speaks OpenAI's Chat Completions: OpenAI, Claude, Gemini,
@@ -104,8 +105,12 @@ class TidyException implements Exception {
   String toString() => 'TidyException(${failure.name}, $detail)';
 }
 
-/// Themes by thought id, and what could be cleaned up.
-typedef Tidied = ({Map<String, String> themes, List<Suggestion> suggestions});
+/// What the AI found in one thought.
+typedef Described = ({
+  List<String> themes,
+  String? title,
+  List<String> subtasks,
+});
 
 class TidyClient {
   TidyClient(this._http);
@@ -115,41 +120,107 @@ class TidyClient {
   /// Reasoning models can think for a while over a long list.
   static const timeout = Duration(minutes: 3);
 
-  /// Sends every thought as context and asks for the themes of [toSort].
-  Future<Tidied> tidy(
+  /// Finds the themes of [thought] among the list's [themes], and its title
+  /// and subtasks when it needs some. The [chosen] thoughts show how the
+  /// person sorts.
+  Future<Described> describe(
+    AiSettings settings,
+    Thought thought, {
+    required List<String> themes,
+    required List<Thought> chosen,
+  }) async {
+    // The thought last: services that cache the start of a prompt bill what
+    // stays the same from one thought to the next for less.
+    final json = await _ask(settings, _describing, {
+      'themes': themes,
+      'sortedByOwner': [
+        for (final t in chosen) {'text': t.text, 'themes': t.themes},
+      ],
+      'thought': thought.text,
+    });
+    String? trimmed(Object? text) => switch (text) {
+      final String text when text.trim().isNotEmpty => text.trim(),
+      _ => null,
+    };
+    return (
+      themes: [
+        ...{
+          if (json['themes'] case final List<dynamic> named)
+            for (final name in named)
+              if (trimmed(name) case final name?)
+                themeSpelled(name, themes) ?? name,
+        },
+      ],
+      title: switch (trimmed(json['title'])) {
+        final title? when title != thought.text => title,
+        _ => null,
+      },
+      subtasks: [
+        if (json['subtasks'] case final List<dynamic> subtasks)
+          for (final subtask in subtasks) ?trimmed(subtask),
+      ],
+    );
+  }
+
+  /// Looks over [thoughts] for some that repeat each other or are out of
+  /// date.
+  Future<List<Suggestion>> cleanUp(
     AiSettings settings, {
     required List<Thought> thoughts,
-    required Set<String> toSort,
     required DateTime now,
   }) async {
     // Numbers rather than ids, which models copy back less reliably.
     final ids = [for (final thought in thoughts) thought.id];
     final day = DateFormat('yyyy-MM-dd, EEEE', 'en_US');
-    final list = {
+    final json = await _ask(settings, _cleaningUp, {
       'today': day.format(now),
-      'toSort': [
-        for (final (index, id) in ids.indexed)
-          if (toSort.contains(id)) index + 1,
-      ],
       'thoughts': [
         for (final (index, thought) in thoughts.indexed)
           {
             'n': index + 1,
             'noted': day.format(thought.createdAt),
             'text': thought.text,
-            'theme': ?thought.theme,
-            if (thought.themeChosen) 'byOwner': true,
           },
       ],
+    });
+
+    String? idOf(Object? number) => switch (number) {
+      final int n when n >= 1 && n <= ids.length => ids[n - 1],
+      final String n => idOf(int.tryParse(n)),
+      _ => null,
     };
+
+    return [
+      if (json['merges'] case final List<dynamic> merges)
+        for (final merge in merges)
+          if (merge case {
+            'thoughts': final List<dynamic> numbers,
+            'text': final String merged,
+          })
+            if ({for (final n in numbers) ?idOf(n)} case final group
+                when group.length >= 2 && merged.trim().isNotEmpty)
+              Merge(group.toList(), merged.trim()),
+      if (json['outdated'] case final List<dynamic> outdated)
+        for (final n in outdated)
+          if (idOf(n) case final String id) Outdated(id),
+    ];
+  }
+
+  /// Sends [input] as JSON after the [instructions], and reads the JSON
+  /// object the reply holds.
+  Future<Map<String, dynamic>> _ask(
+    AiSettings settings,
+    String instructions,
+    Object input,
+  ) async {
     final reply = await _call(settings, 'chat/completions', {
       'model': settings.model,
       'messages': [
-        {'role': 'system', 'content': _instructions},
-        {'role': 'user', 'content': jsonEncode(list)},
+        {'role': 'system', 'content': instructions},
+        {'role': 'user', 'content': jsonEncode(input)},
       ],
     });
-    return _read(_contentOf(reply), ids, toSort);
+    return _jsonIn(_contentOf(reply));
   }
 
   /// The models the service offers, for picking one by name.
@@ -240,65 +311,48 @@ String _contentOf(Map<String, dynamic> reply) => switch (reply) {
   _ => throw TidyException(TidyFailure.failed, reply),
 };
 
-Tidied _read(String content, List<String> ids, Set<String> toSort) {
+Map<String, dynamic> _jsonIn(String content) {
   // Some local models think out loud before answering.
   final text = content.replaceAll(RegExp(r'<think>[\s\S]*?</think>'), '');
   final start = text.indexOf('{');
   final end = text.lastIndexOf('}');
-  Object? json;
   if (start != -1 && end > start) {
     try {
-      json = jsonDecode(text.substring(start, end + 1));
+      if (jsonDecode(text.substring(start, end + 1))
+          case final Map<String, dynamic> json) {
+        return json;
+      }
     } on FormatException {
       // Reported below with the content.
     }
   }
-  if (json is! Map<String, dynamic>) {
-    throw TidyException(TidyFailure.failed, content);
-  }
-
-  String? idOf(Object? number) => switch (number) {
-    final int n when n >= 1 && n <= ids.length => ids[n - 1],
-    final String n => idOf(int.tryParse(n)),
-    _ => null,
-  };
-
-  return (
-    themes: {
-      if (json['themes'] case final Map<String, dynamic> themes)
-        for (final MapEntry(:key, :value) in themes.entries)
-          if ((idOf(key), value) case (final String id, final String theme)
-              when toSort.contains(id) && theme.trim().isNotEmpty)
-            id: theme.trim(),
-    },
-    suggestions: [
-      if (json['merges'] case final List<dynamic> merges)
-        for (final merge in merges)
-          if (merge case {
-            'thoughts': final List<dynamic> numbers,
-            'text': final String merged,
-          })
-            if ({for (final n in numbers) ?idOf(n)} case final group
-                when group.length >= 2 && merged.trim().isNotEmpty)
-              Merge(group.toList(), merged.trim()),
-      if (json['outdated'] case final List<dynamic> outdated)
-        for (final n in outdated)
-          if (idOf(n) case final String id) Outdated(id),
-    ],
-  );
+  throw TidyException(TidyFailure.failed, content);
 }
 
-const _instructions = '''
-You keep a personal list of quick notes tidy. Its owner jots thoughts down in a hurry to get them out of their head: errands, ideas, reminders, things to remember. You receive the whole list as JSON. Each thought has a number, the day it was noted, its text, and its theme when it already has one. A theme marked "byOwner" was chosen by the owner, often to correct yours: those show how the owner wants the list sorted.
+const _describing = '''
+You help keep a personal list of quick notes tidy. Its owner jots thoughts down in a hurry to get them out of their head: errands, ideas, reminders, things to remember. You receive one new thought as JSON, with the themes the list already has and thoughts whose themes the owner chose, often to correct yours: those show how the owner wants the list sorted.
 
 Do three things.
 
-1. Give a theme to each thought numbered in "toSort". Sort it the way the owner sorted similar thoughts. Reuse an existing theme whenever one fits. Create a new theme only for a subject none of them covers, and name it so it can hold future thoughts too: one to three words, in the language the thoughts are written in, starting with a capital letter. A list usually needs a handful of themes, not one per thought.
+1. Give the thought its themes: usually one, more only when it truly belongs to several. Sort it the way the owner sorted similar thoughts. Reuse an existing theme whenever one fits. Create a new theme only for a subject none of them covers, and name it so it can hold future thoughts too: one to three words, in the language the thought is written in, starting with a capital letter.
 
-2. Find thoughts that repeat each other or say nearly the same thing. For each such group, write the one thought that would replace them: keep every detail from each, in the owner's words and language, about as short as the originals. Thoughts that merely share a subject are not repeats.
+2. When the thought is long or covers several things, give it a title: a few words that say what it is about, in its language. A short thought is its own title and gets none.
 
-3. Find thoughts that are clearly out of date today: an appointment or event whose day has passed, an errand tied to a date gone by. When in doubt, leave the thought out.
+3. When the thought is a task with several steps, or lists several things to do or get, list them as subtasks: short, in the owner's words and language, in a sensible order. Keep to what the thought says or clearly implies. A thought with a single thing to do gets none.
 
 Reply with one JSON object and nothing else, in this shape:
-{"themes": {"<number>": "<theme>"}, "merges": [{"thoughts": [<number>, <number>], "text": "<the merged thought>"}], "outdated": [<number>]}
+{"themes": ["<theme>"], "title": "<title>", "subtasks": ["<subtask>"]}
+Use "" for no title and an empty list for no subtasks.''';
+
+const _cleaningUp = '''
+You help keep a personal list of quick notes tidy. Its owner jots thoughts down in a hurry to get them out of their head: errands, ideas, reminders, things to remember. You receive the whole list as JSON, with today's date. Each thought has a number, the day it was noted, and its text.
+
+Do two things.
+
+1. Find thoughts that repeat each other or say nearly the same thing. For each such group, write the one thought that would replace them: keep every detail from each, in the owner's words and language, about as short as the originals. Thoughts that merely share a subject are not repeats.
+
+2. Find thoughts that are clearly out of date today: an appointment or event whose day has passed, an errand tied to a date gone by. When in doubt, leave the thought out.
+
+Reply with one JSON object and nothing else, in this shape:
+{"merges": [{"thoughts": [<number>, <number>], "text": "<the merged thought>"}], "outdated": [<number>]}
 Use empty lists when nothing needs merging or nothing is out of date.''';

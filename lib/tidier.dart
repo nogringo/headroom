@@ -11,63 +11,58 @@ import 'thought_storage.dart';
 import 'thought_store.dart';
 import 'tidy_client.dart';
 
-/// Sorts new thoughts into themes and looks for some to clean up, on its own,
-/// with the AI the person set up. Themes apply at once; clean-ups wait in
-/// [suggestions] for the person to accept or decline.
+/// Has the AI the person set up describe each thought they note: its themes,
+/// and a title and subtasks when it needs some. Asked, it looks for thoughts
+/// to clean up and keeps them in [suggestions] for the person to accept or
+/// decline. It asks nothing else, to keep the bill small.
 class Tidier extends ChangeNotifier {
-  Tidier(
-    this._store,
-    this._storage, {
-    http.Client? client,
-    this.delay = const Duration(seconds: 2),
-  }) : _client = TidyClient(client ?? http.Client());
+  Tidier(this._store, this._storage, {http.Client? client})
+    : _client = TidyClient(client ?? http.Client());
 
   final ThoughtStore _store;
   final ThoughtStorage _storage;
   final TidyClient _client;
 
-  /// From a change to the pass it triggers, so a burst of thoughts goes in one.
-  final Duration delay;
-
-  /// The most thoughts sorted in one pass, which keeps replies short.
-  static const batch = 50;
-
-  /// How often the whole list is looked over when nothing new comes in.
-  static const recheck = Duration(days: 1);
+  /// The most thoughts sent to show how the person sorts.
+  static const examples = 20;
 
   AiSettings? _settings;
   var _suggestions = <Suggestion>[];
   var _declined = <Suggestion>[];
-  DateTime? _checkedAt;
-  var _working = false;
-  var _pending = false;
+
+  /// Thoughts noted but not described yet, oldest first. Saved, so one noted
+  /// offline goes at the next launch.
+  var _queue = <String>[];
+
+  /// Set while a clean-up waits or runs.
+  Completer<int?>? _cleanUp;
+  var _running = false;
+  var _cleaning = false;
+  var _cleanUpFailed = false;
   TidyFailure? _failure;
   String? _failureMessage;
-  Timer? _timer;
 
-  /// Bumped by [configure], so a pass started before is ignored.
+  /// Bumped by [configure], so a reply to the settings before is ignored.
   var _generation = 0;
 
-  /// Thoughts the AI was asked to sort but left out. Not asked again until
-  /// the app restarts, or every pass would ask.
-  final _unsorted = <String>{};
-
   AiSettings? get settings => _settings;
-  bool get working => _working;
+
+  /// Whether a thought is being described.
+  bool get sorting => _running && !_cleaning;
+  bool get cleaning => _cleaning;
   TidyFailure? get failure => _failure;
 
   /// What the service said about the [failure], when it said something.
   String? get failureMessage => _failureMessage;
+
+  /// Whether the [failure] stopped a clean-up, which [cleanUp] tries again.
+  bool get cleanUpFailed => _cleanUpFailed;
   List<Suggestion> get suggestions => UnmodifiableListView(_suggestions);
   List<Suggestion> get declined => UnmodifiableListView(_declined);
 
-  /// Whether [thought] is waiting for a theme the AI is set to give it.
+  /// Whether [thought] is waiting for the themes the AI is about to give it.
   bool willSort(Thought thought) =>
-      _settings != null &&
-      _failure == null &&
-      thought.theme == null &&
-      thought.text.isNotEmpty &&
-      !_unsorted.contains(thought.id);
+      _settings != null && _failure == null && _queue.contains(thought.id);
 
   Future<void> load() async {
     try {
@@ -76,34 +71,39 @@ class Tidier extends ChangeNotifier {
       }
       if (await _storage.readValue('tidy') case final String json) {
         final state = jsonDecode(json) as Map<String, dynamic>;
-        _checkedAt = DateTime.tryParse(state['checkedAt'] as String? ?? '');
         _suggestions = _suggestionsIn(state['suggestions']);
         _declined = _suggestionsIn(state['declined']);
+        _queue = [...?(state['queue'] as List<dynamic>?)?.cast<String>()];
       }
     } catch (error, stack) {
       reportError(error, stack);
     }
     _store.addListener(_storeChanged);
     _storeChanged();
+    _run();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _store.removeListener(_storeChanged);
     super.dispose();
   }
 
-  /// Null turns tidying off and forgets the suggestions.
+  /// Null turns the AI off and forgets the suggestions.
   Future<void> configure(AiSettings? settings) async {
     _settings = settings;
     _generation++;
     _failure = null;
     _failureMessage = null;
-    _unsorted.clear();
-    if (settings == null) _suggestions = [];
+    _cleanUpFailed = false;
+    if (settings == null) {
+      _suggestions = [];
+      _queue = [];
+      _cleanUp?.complete(null);
+      _cleanUp = null;
+    }
     notifyListeners();
-    _schedule(now: true);
+    _run();
     try {
       await _storage.writeValue(
         'ai',
@@ -134,7 +134,25 @@ class Tidier extends ChangeNotifier {
 
   Future<List<String>> models(AiSettings settings) => _client.models(settings);
 
-  void retry() => _schedule(now: true);
+  /// Has the AI describe [thought], just noted.
+  void noted(Thought thought) {
+    if (_settings == null || thought.text.isEmpty) return;
+    _queue.add(thought.id);
+    _saveState();
+    _run();
+  }
+
+  /// Has the AI look over every thought for some to merge or delete. Returns
+  /// how many new suggestions it made, or null when it failed.
+  Future<int?> cleanUp() {
+    if (_settings == null) return Future.value();
+    final request = _cleanUp ??= Completer();
+    _cleanUpFailed = false;
+    _run();
+    return request.future;
+  }
+
+  void retry() => _run();
 
   /// Not suggested again, nor anything it [Suggestion.covers].
   void decline(Suggestion suggestion) {
@@ -146,104 +164,141 @@ class Tidier extends ChangeNotifier {
 
   void _storeChanged() {
     final ids = {for (final thought in _store.thoughts) thought.id};
-    final kept = [
+    final suggestions = [
       for (final s in _suggestions)
         if (s.ids.every(ids.contains)) s,
     ];
-    if (kept.length != _suggestions.length) {
-      _suggestions = kept;
-      notifyListeners();
-      _saveState();
-    }
-    _schedule();
-  }
-
-  bool get _due {
-    final thoughts = _store.thoughts.where((t) => t.text.isNotEmpty);
-    if (_settings == null || thoughts.isEmpty) return false;
-    final checkedAt = _checkedAt;
-    return thoughts.any((t) => t.theme == null && !_unsorted.contains(t.id)) ||
-        checkedAt == null ||
-        DateTime.now().difference(checkedAt) >= recheck;
-  }
-
-  void _schedule({bool now = false}) {
-    if (!_due) return;
-    _timer?.cancel();
-    _timer = Timer(now ? Duration.zero : delay, _run);
-  }
-
-  Future<void> _run() async {
-    final settings = _settings;
-    if (settings == null) return;
-    if (_working) {
-      _pending = true;
+    final queue = [
+      for (final id in _queue)
+        if (ids.contains(id)) id,
+    ];
+    if (suggestions.length == _suggestions.length &&
+        queue.length == _queue.length) {
       return;
     }
-    final generation = _generation;
-    final thoughts = [
-      for (final thought in _store.thoughts)
-        if (thought.text.isNotEmpty) thought,
-    ];
-    // Oldest first, so a long backlog is sorted in the order it was noted.
-    final toSort = thoughts.reversed
-        .where((t) => t.theme == null && !_unsorted.contains(t.id))
-        .take(batch)
-        .map((t) => t.id)
-        .toSet();
-    _working = true;
+    _suggestions = suggestions;
+    _queue = queue;
+    notifyListeners();
+    _saveState();
+  }
+
+  /// Works through the queue, then the clean-up asked for, until done or
+  /// stopped by a failure.
+  Future<void> _run() async {
+    if (_running) return;
+    _running = true;
     _failure = null;
     _failureMessage = null;
     notifyListeners();
     try {
-      final tidied = await _client.tidy(
-        settings,
-        thoughts: thoughts,
-        toSort: toSort,
-        now: DateTime.now(),
-      );
-      if (generation == _generation) _apply(tidied, thoughts, toSort);
-    } on TidyException catch (error, stack) {
-      if (generation == _generation) {
-        _failure = error.failure;
-        _failureMessage = error.message;
-        // A wrong key or address is the person's to fix, not a bug.
-        if (error.failure == TidyFailure.failed) reportError(error, stack);
+      while (_failure == null) {
+        final settings = _settings;
+        if (settings == null) break;
+        if (_queue.isNotEmpty) {
+          await _describe(settings, _queue.first);
+        } else if (_cleanUp != null) {
+          await _lookForCleanUps(settings);
+        } else {
+          break;
+        }
       }
-    } catch (error, stack) {
-      if (generation == _generation) _failure = TidyFailure.failed;
-      reportError(error, stack);
     } finally {
-      _working = false;
+      if (_failure != null && _cleanUp != null) {
+        _cleanUp!.complete(null);
+        _cleanUp = null;
+        _cleanUpFailed = true;
+      }
+      _running = false;
       notifyListeners();
-    }
-    if (_failure == null || _pending) {
-      _pending = false;
-      _schedule(now: true);
     }
   }
 
-  void _apply(Tidied tidied, List<Thought> sent, Set<String> toSort) {
-    // A thought edited during the pass was sorted on its old text.
+  Future<void> _describe(AiSettings settings, String id) async {
+    final generation = _generation;
+    final thought = _store.thoughts.where((t) => t.id == id).firstOrNull;
+    if (thought == null || thought.text.isEmpty) {
+      _queue.remove(id);
+      await _saveState();
+      return;
+    }
+    final described = await _asking(
+      generation,
+      () => _client.describe(
+        settings,
+        thought,
+        themes: {for (final t in _store.thoughts) ...t.themes}.toList(),
+        chosen: [
+          for (final t in _store.thoughts)
+            if (t.themesChosen && t.themes.isNotEmpty) t,
+        ].take(examples).toList(),
+      ),
+    );
+    if (described == null) return;
+    // Applied even to a thought edited meanwhile: it is not asked about again.
+    _store.annotate(
+      id,
+      themes: described.themes,
+      title: described.title,
+      subtasks: described.subtasks,
+    );
+    _queue.remove(id);
+    await _saveState();
+  }
+
+  Future<void> _lookForCleanUps(AiSettings settings) async {
+    final generation = _generation;
+    final sent = [
+      for (final thought in _store.thoughts)
+        if (thought.text.isNotEmpty) thought,
+    ];
+    _cleaning = true;
+    notifyListeners();
+    final found = sent.isEmpty
+        ? <Suggestion>[]
+        : await _asking(
+            generation,
+            () =>
+                _client.cleanUp(settings, thoughts: sent, now: DateTime.now()),
+          );
+    _cleaning = false;
+    if (found == null) return;
+    // A thought edited meanwhile was looked at in its old words.
     final sentText = {for (final thought in sent) thought.id: thought.text};
     final current = {
       for (final thought in _store.thoughts) thought.id: thought.text,
     };
-    _unsorted.addAll(toSort.where((id) => !tidied.themes.containsKey(id)));
-    for (final suggestion in tidied.suggestions) {
+    var added = 0;
+    for (final suggestion in found) {
       if (suggestion.ids.any((id) => current[id] != sentText[id])) continue;
       if ([..._suggestions, ..._declined].any((s) => s.covers(suggestion))) {
         continue;
       }
       _suggestions.add(suggestion);
+      added++;
     }
-    _checkedAt = DateTime.now();
-    _store.setThemes({
-      for (final MapEntry(:key, :value) in tidied.themes.entries)
-        if (current[key] == sentText[key]) key: value,
-    });
+    _cleanUp?.complete(added);
+    _cleanUp = null;
     notifyListeners();
-    _saveState();
+    await _saveState();
+  }
+
+  /// The reply to [ask], or null when it failed, which sets [failure], or
+  /// came for settings since replaced.
+  Future<T?> _asking<T>(int generation, Future<T> Function() ask) async {
+    try {
+      final reply = await ask();
+      return generation == _generation ? reply : null;
+    } on TidyException catch (error, stack) {
+      if (generation != _generation) return null;
+      _failure = error.failure;
+      _failureMessage = error.message;
+      // A wrong key or address is the person's to fix, not a bug.
+      if (error.failure == TidyFailure.failed) reportError(error, stack);
+    } catch (error, stack) {
+      if (generation == _generation) _failure = TidyFailure.failed;
+      reportError(error, stack);
+    }
+    return null;
   }
 
   Future<void> _saveState() async {
@@ -253,9 +308,9 @@ class Tidier extends ChangeNotifier {
       await _storage.writeValue(
         'tidy',
         jsonEncode({
-          'checkedAt': ?_checkedAt?.toUtc().toIso8601String(),
           'suggestions': _suggestions,
           'declined': _declined,
+          if (_queue.isNotEmpty) 'queue': _queue,
         }),
       );
     } catch (error, stack) {

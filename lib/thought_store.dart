@@ -69,50 +69,57 @@ class ThoughtStore extends ChangeNotifier {
   }
 
   /// Needs a non-blank [text], some [images], or both. A removed image is
-  /// deleted at the next [load]. New text drops the theme the AI gave, to be
-  /// sorted again.
+  /// deleted at the next [load]. Keeps what the AI gave the thought, which it
+  /// is not asked about again.
   void update(String id, {required String text, required List<String> images}) {
     final index = _thoughts.indexWhere((t) => t.id == id);
     final trimmed = text.trim();
     if (index == -1 || (trimmed.isEmpty && images.isEmpty)) return;
+    _thoughts[index] = _thoughts[index].copyWith(text: trimmed, images: images);
+    _changed();
+  }
+
+  /// Gives the thought what the AI found for it, but not [themes] when the
+  /// person chose its own.
+  void annotate(
+    String id, {
+    required List<String> themes,
+    String? title,
+    List<String> subtasks = const [],
+  }) {
+    final index = _thoughts.indexWhere((t) => t.id == id);
+    if (index == -1) return;
     final thought = _thoughts[index];
-    final keepsTheme = thought.themeChosen || trimmed == thought.text;
-    _thoughts[index] = Thought(
-      id: thought.id,
-      text: trimmed,
-      images: images,
-      createdAt: thought.createdAt,
-      theme: keepsTheme ? thought.theme : null,
-      themeChosen: thought.themeChosen,
-      rank: thought.rank,
+    _thoughts[index] = thought.copyWith(
+      themes: thought.themesChosen ? null : themes,
+      title: title,
+      subtasks: [for (final text in subtasks) (text: text, done: false)],
     );
     _changed();
   }
 
-  /// Gives each thought named in [themes] the theme the AI found for it.
-  /// Unknown ids and themes the person chose are skipped.
-  void setThemes(Map<String, String> themes) {
-    var changed = false;
-    for (final (index, thought) in _thoughts.indexed) {
-      final theme = themes[thought.id];
-      if (theme == null || theme == thought.theme || thought.themeChosen) {
-        continue;
-      }
-      _thoughts[index] = _withTheme(thought, theme);
-      changed = true;
-    }
-    if (changed) _changed();
-  }
-
-  /// Puts the thought in the [theme] the person chose. Null hands it back to
-  /// the AI.
-  void chooseTheme(String id, String? theme) {
+  /// Puts the thought in the [themes] the person chose, none when empty.
+  void chooseThemes(String id, List<String> themes) {
     final index = _thoughts.indexWhere((t) => t.id == id);
     if (index == -1) return;
-    _thoughts[index] = _withTheme(
-      _thoughts[index],
-      theme,
-      chosen: theme != null,
+    _thoughts[index] = _thoughts[index].copyWith(
+      themes: themes,
+      themesChosen: true,
+    );
+    _changed();
+  }
+
+  /// Ticks off the thought's subtask at [index], or back on.
+  void toggleSubtask(String id, int index) {
+    final at = _thoughts.indexWhere((t) => t.id == id);
+    if (at == -1) return;
+    final thought = _thoughts[at];
+    if (index >= thought.subtasks.length) return;
+    _thoughts[at] = thought.copyWith(
+      subtasks: [
+        for (final (i, subtask) in thought.subtasks.indexed)
+          i == index ? (text: subtask.text, done: !subtask.done) : subtask,
+      ],
     );
     _changed();
   }
@@ -122,17 +129,25 @@ class ThoughtStore extends ChangeNotifier {
     if (from == to) return;
     var changed = false;
     for (final (index, thought) in _thoughts.indexed) {
-      if (thought.theme != from) continue;
-      _thoughts[index] = _withTheme(thought, to, chosen: thought.themeChosen);
+      if (!thought.themes.contains(from)) continue;
+      final ranks = {...thought.ranks};
+      final rank = ranks.remove(from);
+      if (rank != null && !thought.themes.contains(to)) ranks[to] = rank;
+      _thoughts[index] = thought.copyWith(
+        themes: {for (final theme in thought.themes) theme == from ? to : theme}
+            .toList(),
+        ranks: ranks,
+      );
       changed = true;
     }
     if (changed) _changed();
   }
 
   /// Replaces the thoughts [ids] with one holding [text] and all their
-  /// images. It takes the id and theme of the newest, and the highest rank.
-  /// Returns what [unmerge] needs, or null when fewer than two of the
-  /// thoughts are left.
+  /// images and themes, with the highest rank each held in a theme. It takes
+  /// the id of the newest, and no title or subtasks, which were about the
+  /// old text. Returns what [unmerge] needs, or null when fewer than two of
+  /// the thoughts are left.
   Merged? merge(List<String> ids, String text) {
     final trimmed = text.trim();
     final originals = [
@@ -141,14 +156,18 @@ class ThoughtStore extends ChangeNotifier {
     ];
     if (originals.length < 2 || trimmed.isEmpty) return null;
     final newest = originals.first;
+    final themes = {for (final o in originals) ...o.thought.themes}.toList();
     final merged = Thought(
       id: newest.thought.id,
       text: trimmed,
       images: {for (final o in originals) ...o.thought.images}.toList(),
       createdAt: newest.thought.createdAt,
-      theme: newest.thought.theme,
-      themeChosen: newest.thought.themeChosen,
-      rank: originals.map((o) => o.thought.rank).reduce(math.max),
+      themes: themes,
+      themesChosen: originals.any((o) => o.thought.themesChosen),
+      ranks: {
+        for (final theme in themes.isEmpty ? const [''] : themes)
+          theme: originals.map((o) => o.thought.rankIn(theme)).reduce(math.max),
+      },
     );
     for (final o in originals.reversed) {
       _thoughts.removeAt(o.index);
@@ -167,28 +186,23 @@ class ThoughtStore extends ChangeNotifier {
     _changed();
   }
 
-  /// Puts the thoughts [ids] in this order, highest first, by sharing out the
-  /// ranks they hold among them. The other thoughts keep theirs.
-  void reorder(List<String> ids) {
+  /// Puts the thoughts [ids] of [theme] in this order, highest first, by
+  /// sharing out the ranks they hold in it among them. The other thoughts,
+  /// and the other themes, keep theirs.
+  void reorder(String theme, List<String> ids) {
     final indices = [
       for (final id in ids)
         if (_thoughts.indexWhere((t) => t.id == id) case final i when i != -1)
           i,
     ];
-    final ranks = [for (final i in indices) _thoughts[i].rank]
+    final ranks = [for (final i in indices) _thoughts[i].rankIn(theme)]
       ..sort((a, b) => b.compareTo(a));
     var changed = false;
     for (final (place, i) in indices.indexed) {
       final thought = _thoughts[i];
-      if (thought.rank == ranks[place]) continue;
-      _thoughts[i] = Thought(
-        id: thought.id,
-        text: thought.text,
-        images: thought.images,
-        createdAt: thought.createdAt,
-        theme: thought.theme,
-        themeChosen: thought.themeChosen,
-        rank: ranks[place],
+      if (thought.rankIn(theme) == ranks[place]) continue;
+      _thoughts[i] = thought.copyWith(
+        ranks: {...thought.ranks, theme: ranks[place]},
       );
       changed = true;
     }
@@ -228,17 +242,6 @@ class ThoughtStore extends ChangeNotifier {
     _changed();
     return at;
   }
-
-  Thought _withTheme(Thought thought, String? theme, {bool chosen = false}) =>
-      Thought(
-        id: thought.id,
-        text: thought.text,
-        images: thought.images,
-        createdAt: thought.createdAt,
-        theme: theme,
-        themeChosen: chosen,
-        rank: thought.rank,
-      );
 
   /// Completes once every change made so far has been written.
   Future<void> flush() => _pendingWrite;

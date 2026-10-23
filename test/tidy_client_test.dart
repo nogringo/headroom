@@ -20,20 +20,86 @@ void main() {
       id: 'a',
       text: 'Dentiste mardi 14h',
       createdAt: DateTime(2026, 10, 6, 8),
-      theme: 'Santé',
-      themeChosen: true,
+      themes: ['Santé'],
+      themesChosen: true,
     ),
   ];
+  final thought = thoughts.first;
 
-  test('sends the numbered list and reads the reply back by id', () async {
+  test('sends one thought with the themes, and reads its own', () async {
     late http.Request sent;
     final client = TidyClient(
       MockClient((request) async {
         sent = request;
         return chatReply(
-          '<think>Two are about {milk}.</think>\n```json\n'
+          '<think>It is about {milk}.</think>\n```json\n'
           '${jsonEncode({
-            'themes': {'1': ' Courses ', '2': 'Courses', '3': 'Ignored', '9': 'Unknown'},
+            'themes': [' courses ', 'Courses', 'Maison', ''],
+            'title': ' Lait ',
+            'subtasks': ['Lait entier', ' ', 'Lait de coco '],
+          })}\n```',
+        );
+      }),
+    );
+
+    final described = await client.describe(
+      testAi,
+      thought,
+      themes: ['Courses', 'Santé'],
+      chosen: [thoughts.last],
+    );
+
+    expect(sent.url, Uri.parse('https://ai.example/v1/chat/completions'));
+    expect(sent.headers['authorization'], 'Bearer secret');
+    expect(
+      sent.headers,
+      isNot(contains('anthropic-dangerous-direct-browser-access')),
+    );
+    expect((jsonDecode(sent.body) as Map)['model'], 'tidy-1');
+    expect(sentInput(sent), {
+      'themes': ['Courses', 'Santé'],
+      'sortedByOwner': [
+        {
+          'text': 'Dentiste mardi 14h',
+          'themes': ['Santé'],
+        },
+      ],
+      'thought': 'Acheter du lait',
+    });
+
+    expect(described.themes, ['Courses', 'Maison']);
+    expect(described.title, 'Lait');
+    expect(described.subtasks, ['Lait entier', 'Lait de coco']);
+  });
+
+  test('reads no title or subtasks when the thought needs none', () async {
+    final client = TidyClient(
+      MockClient(
+        (request) async =>
+            chatReply({'themes': [], 'title': 'Acheter du lait'}),
+      ),
+    );
+
+    final described = await client.describe(
+      testAi,
+      thought,
+      themes: [],
+      chosen: [],
+    );
+
+    expect(described.themes, isEmpty);
+    expect(described.title, isNull, reason: 'It would repeat the text');
+    expect(described.subtasks, isEmpty);
+  });
+
+  test(
+    'sends the numbered list to clean up, and reads it back by id',
+    () async {
+      late http.Request sent;
+      final client = TidyClient(
+        MockClient((request) async {
+          sent = request;
+          return chatReply({
             'merges': [
               {
                 'thoughts': [1, 2],
@@ -45,43 +111,30 @@ void main() {
               },
             ],
             'outdated': [3, 7],
-          })}\n```',
-        );
-      }),
-    );
+          });
+        }),
+      );
 
-    final tidied = await client.tidy(
-      testAi,
-      thoughts: thoughts,
-      toSort: {'c', 'b'},
-      now: DateTime(2026, 10, 20, 10),
-    );
+      final suggestions = await client.cleanUp(
+        testAi,
+        thoughts: thoughts,
+        now: DateTime(2026, 10, 20, 10),
+      );
 
-    expect(sent.url, Uri.parse('https://ai.example/v1/chat/completions'));
-    expect(sent.headers['authorization'], 'Bearer secret');
-    expect(
-      sent.headers,
-      isNot(contains('anthropic-dangerous-direct-browser-access')),
-    );
-    expect((jsonDecode(sent.body) as Map)['model'], 'tidy-1');
-    final list = sentList(sent);
-    expect(list.toSort, [1, 2]);
-    expect(list.thoughts.last, {
-      'n': 3,
-      'noted': '2026-10-06, Tuesday',
-      'text': 'Dentiste mardi 14h',
-      'theme': 'Santé',
-      'byOwner': true,
-    });
-    expect(list.thoughts.first, isNot(contains('theme')));
-
-    expect(tidied.themes, {'c': 'Courses', 'b': 'Courses'});
-    expect(tidied.suggestions, hasLength(2));
-    final merge = tidied.suggestions.first as Merge;
-    expect(merge.ids, ['c', 'b']);
-    expect(merge.text, 'Acheter du lait');
-    expect((tidied.suggestions.last as Outdated).id, 'a');
-  });
+      final input = sentInput(sent);
+      expect(input['today'], '2026-10-20, Tuesday');
+      expect((input['thoughts'] as List<dynamic>).last, {
+        'n': 3,
+        'noted': '2026-10-06, Tuesday',
+        'text': 'Dentiste mardi 14h',
+      });
+      expect(suggestions, hasLength(2));
+      final merge = suggestions.first as Merge;
+      expect(merge.ids, ['c', 'b']);
+      expect(merge.text, 'Acheter du lait');
+      expect((suggestions.last as Outdated).id, 'a');
+    },
+  );
 
   test('asks Claude the way a browser may, and lists its models', () async {
     final requests = <http.Request>[];
@@ -98,7 +151,7 @@ void main() {
                 }),
                 200,
               )
-            : chatReply({'themes': {}});
+            : describedAs([]);
       }),
     );
     const claude = AiSettings(
@@ -107,12 +160,7 @@ void main() {
       model: 'claude-haiku-5-5',
     );
 
-    await client.tidy(
-      claude,
-      thoughts: thoughts,
-      toSort: {},
-      now: DateTime(2026),
-    );
+    await client.describe(claude, thought, themes: [], chosen: []);
     final models = await client.models(claude);
 
     final [chat, listing] = requests;
@@ -130,19 +178,19 @@ void main() {
     final client = TidyClient(
       MockClient((request) async {
         sent = request;
-        return chatReply({'themes': {}});
+        return describedAs([]);
       }),
     );
 
-    await client.tidy(
+    await client.describe(
       const AiSettings(
         baseUrl: 'http://localhost:11434/v1',
         apiKey: '',
         model: 'llama',
       ),
-      thoughts: thoughts,
-      toSort: {},
-      now: DateTime(2026),
+      thought,
+      themes: [],
+      chosen: [],
     );
 
     expect(sent.headers, isNot(contains('authorization')));
@@ -152,12 +200,7 @@ void main() {
     Future<TidyFailure> failureFor(http.Response response) async {
       final client = TidyClient(MockClient((_) async => response));
       try {
-        await client.tidy(
-          testAi,
-          thoughts: thoughts,
-          toSort: {},
-          now: DateTime(2026),
-        );
+        await client.describe(testAi, thought, themes: [], chosen: []);
       } on TidyException catch (error) {
         return error.failure;
       }
@@ -175,7 +218,7 @@ void main() {
       MockClient((request) async => throw http.ClientException('offline')),
     );
     await expectLater(
-      offline.tidy(testAi, thoughts: thoughts, toSort: {}, now: DateTime(2026)),
+      offline.describe(testAi, thought, themes: [], chosen: []),
       throwsA(
         isA<TidyException>().having(
           (e) => e.failure,
@@ -190,12 +233,7 @@ void main() {
     Future<String?> messageFor(http.Response response) async {
       final client = TidyClient(MockClient((_) async => response));
       try {
-        await client.tidy(
-          testAi,
-          thoughts: thoughts,
-          toSort: {},
-          now: DateTime(2026),
-        );
+        await client.describe(testAi, thought, themes: [], chosen: []);
       } on TidyException catch (error) {
         return error.message;
       }

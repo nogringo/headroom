@@ -97,19 +97,16 @@ class AppLocalizationsFr extends AppLocalizations {
   String get noTheme => 'Sans thème';
 
   @override
-  String get theme => 'Thème';
+  String get themes => 'Thèmes';
 
   @override
-  String get changeTheme => 'Changer de thème';
+  String get changeThemes => 'Changer les thèmes';
 
   @override
-  String get chooseTheme => 'Choisir un thème';
+  String get chooseThemes => 'Choisir des thèmes';
 
   @override
   String get newThemeItem => 'Nouveau thème...';
-
-  @override
-  String get letAiChoose => 'Laisser l\'IA choisir';
 
   @override
   String get newTheme => 'Nouveau thème';
@@ -138,8 +135,31 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tidying => 'Rangement en cours';
 
   @override
+  String get cleanUpAction => 'Faire le ménage';
+
+  @override
+  String get cleaningUp => 'Ménage en cours';
+
+  @override
+  String get nothingToCleanUp => 'Aucune pensée en double ni dépassée.';
+
+  @override
+  String suggestionsElsewhere(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count propositions, dans Tout',
+      one: '1 proposition, dans Tout',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get show => 'Afficher';
+
+  @override
   String get tidyIntro =>
-      'Une IA de ton choix range tes pensées par thème au fil de l\'eau, et repère celles à fusionner ou à effacer. Tout service compatible avec l\'API d\'OpenAI fonctionne, y compris un modèle qui tourne sur ton ordinateur.';
+      'Une IA de ton choix range chaque pensée par thème quand tu la notes, et lui donne un titre et des sous-tâches quand il en faut. Quand tu le demandes, elle repère celles à fusionner ou à effacer. Tout service compatible avec l\'API d\'OpenAI fonctionne, y compris un modèle qui tourne sur ton ordinateur.';
 
   @override
   String get tidyAddress => 'Adresse de l\'API';

@@ -260,41 +260,35 @@ abstract class AppLocalizations {
   /// **'All'**
   String get allThoughts;
 
-  /// Sidebar entry for the thoughts without a theme. Also the edit dialog's theme menu item that takes a thought out of its theme, while no AI is set up.
+  /// Sidebar entry for the thoughts without a theme.
   ///
   /// In en, this message translates to:
   /// **'No theme'**
   String get noTheme;
 
-  /// Tooltip of the edit dialog's button that shows the thought's theme and opens a menu to change it.
+  /// Tooltip of the edit dialog's button that shows the thought's themes and opens a menu to change them.
   ///
   /// In en, this message translates to:
-  /// **'Theme'**
-  String get theme;
+  /// **'Themes'**
+  String get themes;
 
-  /// Tooltip of the theme shown under a thought in the list of every thought, which opens a menu to change it.
+  /// Tooltip of the themes shown under a thought in the list of every thought, which opens a menu to change them.
   ///
   /// In en, this message translates to:
-  /// **'Change theme'**
-  String get changeTheme;
+  /// **'Change themes'**
+  String get changeThemes;
 
-  /// Label of the edit dialog's theme button while the thought has no theme.
+  /// Label of the edit dialog's themes button while the thought has none.
   ///
   /// In en, this message translates to:
-  /// **'Choose a theme'**
-  String get chooseTheme;
+  /// **'Choose themes'**
+  String get chooseThemes;
 
-  /// Item of the edit dialog's theme menu that asks for the name of a theme to create.
+  /// Item of the theme menu that asks for the name of a theme to create.
   ///
   /// In en, this message translates to:
   /// **'New theme...'**
   String get newThemeItem;
-
-  /// Item of the edit dialog's theme menu that hands a theme the person chose back to the AI, which then sorts the thought itself.
-  ///
-  /// In en, this message translates to:
-  /// **'Let the AI choose'**
-  String get letAiChoose;
 
   /// Title of the dialog that asks for a new theme's name.
   ///
@@ -338,16 +332,46 @@ abstract class AppLocalizations {
   /// **'AI tidying'**
   String get tidySettings;
 
-  /// Tooltip of the same button while the AI is sorting the thoughts.
+  /// Tooltip of the same button while the AI is sorting a new thought.
   ///
   /// In en, this message translates to:
   /// **'Tidying'**
   String get tidying;
 
+  /// Button that asks the AI to look over every thought for some to merge or delete.
+  ///
+  /// In en, this message translates to:
+  /// **'Clean up'**
+  String get cleanUpAction;
+
+  /// Label of the same button while the AI looks over the thoughts.
+  ///
+  /// In en, this message translates to:
+  /// **'Cleaning up'**
+  String get cleaningUp;
+
+  /// Shown when the AI looked over every thought and found nothing to merge or delete.
+  ///
+  /// In en, this message translates to:
+  /// **'No repeated or out-of-date thoughts.'**
+  String get nothingToCleanUp;
+
+  /// Shown when the AI found clean-ups about thoughts outside the open theme. The list of every thought shows them.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 suggestion, in All} other{{count} suggestions, in All}}'**
+  String suggestionsElsewhere(int count);
+
+  /// Action beside the suggestions found elsewhere, which opens the list of every thought.
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get show;
+
   /// First paragraph of the AI tidying dialog.
   ///
   /// In en, this message translates to:
-  /// **'An AI of your choice sorts your thoughts by theme as you note them, and spots the ones to merge or delete. Any service compatible with OpenAI\'s API works, including a model running on your computer.'**
+  /// **'An AI of your choice sorts each thought by theme as you note it, and gives it a title and subtasks when it needs some. When you ask, it spots the thoughts to merge or delete. Any service compatible with OpenAI\'s API works, including a model running on your computer.'**
   String get tidyIntro;
 
   /// Label of the field holding the base URL of the AI service.
