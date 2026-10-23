@@ -538,6 +538,36 @@ void main() {
     expect(find.text('Undo'), findsOneWidget);
   });
 
+  testWidgets('a wide window keeps the message narrow, under the list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '2', text: 'Buy bread', createdAt: now, themes: ['Errands']),
+      Thought(id: '1', text: 'Fix the build', createdAt: now, themes: ['Work']),
+    ]);
+
+    await tester.drag(find.text('Buy bread'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    final message = tester.getRect(
+      find
+          .descendant(
+            of: find.byType(SnackBar),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(message.width, 480);
+    expect(message.center.dx, 240 + (1200 - 240) / 2);
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Undo'), findsNothing);
+  });
+
   testWidgets('thoughts are listed under their day', (tester) async {
     final now = DateTime.now();
     await pumpApp(tester, [
@@ -2444,6 +2474,43 @@ void main() {
       await tester.pumpAndSettle();
       expect(listed('Fix the build'), findsOneWidget);
       expect(find.text('This thought looks out of date:'), findsOneWidget);
+    });
+
+    testWidgets('what a clean-up found elsewhere goes away on its own', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      await pumpApp(
+        tester,
+        [
+          Thought(
+            id: '2',
+            text: 'Fix the build',
+            createdAt: now,
+            themes: ['Work'],
+          ),
+          Thought(
+            id: '1',
+            text: 'Dentist on Monday',
+            createdAt: now,
+            themes: ['Health'],
+          ),
+        ],
+        const {},
+        (request) async => chatReply({
+          'outdated': [2],
+        }),
+      );
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(inSidebar('Work'));
+      await tester.pumpAndSettle();
+
+      await cleanUp(tester);
+      expect(find.text('Show'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(find.text('Show'), findsNothing);
     });
 
     testWidgets('is set up in the settings', (tester) async {

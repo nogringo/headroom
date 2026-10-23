@@ -82,6 +82,7 @@ ThemeData buildTheme(Brightness brightness) {
     snackBarTheme: const SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: paperRadius),
+      showCloseIcon: true,
     ),
   );
 }

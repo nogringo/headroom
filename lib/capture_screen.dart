@@ -44,6 +44,8 @@ const _wideWidth = 840.0;
 
 const _sidebarWidth = 240.0;
 
+const _messageWidth = 480.0;
+
 /// A heading for [day] when [thought] is null, else a thought noted that day.
 typedef _Row = ({DateTime day, Thought? thought});
 
@@ -63,6 +65,38 @@ List<_Row> _rowsOf(Iterable<Thought> thoughts, {required bool withHeadings}) {
 }
 
 Object _keyOf(_Row row) => row.thought?.id ?? row.day;
+
+extension on ScaffoldMessengerState {
+  /// Replaces the message shown with [text], centered over the window past
+  /// [start], where the sidebar ends.
+  void showMessage(
+    String text, {
+    SnackBarAction? action,
+    bool persist = false,
+    double start = 0,
+  }) {
+    final side = math.max(
+      _gutter,
+      (MediaQuery.sizeOf(context).width - start - _messageWidth) / 2,
+    );
+    this
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(text),
+          action: action,
+          // Flutter otherwise keeps a message with an action until tapped.
+          persist: persist,
+          // SnackBar resolves a directional margin as left-to-right.
+          margin: EdgeInsetsDirectional.only(
+            start: start + side,
+            end: side,
+            bottom: _gutter,
+          ).resolve(Directionality.of(context)),
+        ),
+      );
+  }
+}
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
@@ -146,6 +180,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
         '',
     ];
   }
+
+  bool get _wide => MediaQuery.sizeOf(context).width >= _wideWidth;
+
+  /// Where the list's side of the window starts, past a sidebar beside it.
+  double get _listStart =>
+      _wide && _sidebarThemes().isNotEmpty ? _sidebarWidth : 0;
 
   Duration get _motion => MediaQuery.disableAnimationsOf(context)
       ? Duration.zero
@@ -245,9 +285,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
-  void _showError(String message) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+  void _showError(String message) =>
+      ScaffoldMessenger.of(context).showMessage(message, start: _listStart);
 
   Future<void> _copyImage(String name) async {
     try {
@@ -332,21 +371,19 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   void _offerUndo(String message, VoidCallback undo) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          // A screen reader takes longer than the timeout to reach Undo.
-          persist: MediaQuery.accessibleNavigationOf(context),
-          action: SnackBarAction(
-            label: AppLocalizations.of(context).undo,
-            onPressed: () {
-              if (mounted) undo();
-            },
-          ),
-        ),
-      );
+    ScaffoldMessenger.of(context).showMessage(
+      message,
+      start: _listStart,
+      // A screen reader takes longer than the timeout to reach Undo. The web
+      // keeps semantics on for typing, so it cannot tell one is running.
+      persist: !kIsWeb && MediaQuery.accessibleNavigationOf(context),
+      action: SnackBarAction(
+        label: AppLocalizations.of(context).undo,
+        onPressed: () {
+          if (mounted) undo();
+        },
+      ),
+    );
   }
 
   /// Lists every thought when [theme] is null, else that theme's.
@@ -405,20 +442,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final shown = {for (final row in _rows) ?row.thought?.id};
     if (_tidier.suggestions.any((s) => s.ids.any(shown.contains))) return;
     final l10n = AppLocalizations.of(context);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            found == 0
-                ? l10n.nothingToCleanUp
-                : l10n.suggestionsElsewhere(found),
-          ),
-          action: found == 0
-              ? null
-              : SnackBarAction(label: l10n.show, onPressed: () => _open(null)),
-        ),
-      );
+    ScaffoldMessenger.of(context).showMessage(
+      found == 0 ? l10n.nothingToCleanUp : l10n.suggestionsElsewhere(found),
+      start: _listStart,
+      action: found == 0
+          ? null
+          : SnackBarAction(label: l10n.show, onPressed: () => _open(null)),
+    );
   }
 
   /// Renames [theme], which joins another when it takes its name.
@@ -566,7 +596,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// on a wide window, else in a drawer.
   Widget _buildLayout(BuildContext context, Widget note) {
     final themes = _sidebarThemes();
-    final wide = MediaQuery.sizeOf(context).width >= _wideWidth;
     final sidebar = themes.isEmpty
         ? null
         : Sidebar(
@@ -582,7 +611,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
           );
     return Scaffold(
       key: _scaffold,
-      drawer: sidebar == null || wide
+      drawer: sidebar == null || _wide
           ? null
           : Drawer(
               width: 280,
@@ -598,7 +627,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (sidebar != null && wide)
+            if (sidebar != null && _wide)
               Container(
                 width: _sidebarWidth,
                 decoration: BoxDecoration(
@@ -628,7 +657,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             note,
-                            if (sidebar == null || !wide)
+                            if (sidebar == null || !_wide)
                               _buildToolbar(context, drawer: sidebar != null),
                           ],
                         ),
@@ -1685,11 +1714,9 @@ class _ImageViewerState extends State<_ImageViewer> {
     } catch (error, stack) {
       reportError(error, stack);
       if (!mounted) return;
-      _messenger.currentState
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).imageNotCopied)),
-        );
+      _messenger.currentState?.showMessage(
+        AppLocalizations.of(context).imageNotCopied,
+      );
       return;
     }
     if (!mounted) return;
