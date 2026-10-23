@@ -912,6 +912,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Widget _buildThought(Thought thought, ItemMoves moves) {
     final l10n = AppLocalizations.of(context);
     final themes = _themes();
+    final otherThemes = orderedThemes(
+      thought.themes.where((theme) => theme != _theme),
+      _listSettings.themeOrder,
+    );
     void chooseThemes(List<String> chosen) =>
         _store.chooseThemes(thought.id, chosen);
     return ContextMenu<int>(
@@ -983,44 +987,41 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 createdAt: thought.createdAt,
                 withDay: _theme != null,
                 sorting: _tidier.willSort(thought),
-                themeButton: switch (thought.themes) {
-                  final selected when selected.isNotEmpty && _theme == null =>
-                    _ThemeMenu(
-                      selected: selected,
-                      themes: themes,
-                      onChoose: chooseThemes,
-                      // Else the tooltip ends up on the thought rather than here.
-                      builder: (context, toggle) => MergeSemantics(
-                        child: Tooltip(
-                          message: l10n.changeThemes,
-                          child: TextButton.icon(
-                            style: TextButton.styleFrom(
-                              foregroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              textStyle: Theme.of(context).textTheme.bodySmall,
-                              // Lines the label up with the text above.
-                              padding: const EdgeInsetsDirectional.only(end: 8),
-                              minimumSize: const Size(0, 28),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            onPressed: toggle,
-                            icon: const Icon(
-                              Icons.label_outline_rounded,
-                              size: 14,
-                            ),
-                            label: Text(
-                              orderedThemes(
-                                selected,
-                                _listSettings.themeOrder,
-                              ).join(', '),
+                themeButton: otherThemes.isEmpty
+                    ? null
+                    : _ThemeMenu(
+                        selected: thought.themes,
+                        themes: themes,
+                        onChoose: chooseThemes,
+                        // Else the tooltip ends up on the thought rather than here.
+                        builder: (context, toggle) => MergeSemantics(
+                          child: Tooltip(
+                            message: l10n.changeThemes,
+                            child: TextButton.icon(
+                              style: TextButton.styleFrom(
+                                foregroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                                textStyle: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall,
+                                // Lines the label up with the text above.
+                                padding: const EdgeInsetsDirectional.only(
+                                  end: 8,
+                                ),
+                                minimumSize: const Size(0, 28),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: toggle,
+                              icon: const Icon(
+                                Icons.label_outline_rounded,
+                                size: 14,
+                              ),
+                              label: Text(otherThemes.join(', ')),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  _ => null,
-                },
                 onTap: () => _edit(thought),
                 onToggleSubtask: (index) =>
                     _store.toggleSubtask(thought.id, index),

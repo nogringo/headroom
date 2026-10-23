@@ -1547,7 +1547,7 @@ void main() {
     expect(bread().themesChosen, isTrue);
   });
 
-  testWidgets('every thought shows its themes, which a tap corrects', (
+  testWidgets('every thought shows its other themes, which a tap corrects', (
     tester,
   ) async {
     final now = DateTime.now();
@@ -1595,7 +1595,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(listed('Buy bread'), findsOneWidget);
     expect(listed('Fix the build'), findsOneWidget);
-    expect(find.byTooltip('Change themes'), findsNothing);
+    expect(find.byTooltip('Change themes'), findsOneWidget);
+    expect(themesOf('Errands, Food'), findsOneWidget);
+
+    await tester.tap(themesOf('Errands, Food'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<CheckboxMenuButton>(checkItem('Work')).value, isTrue);
   });
 
   testWidgets('renames the open theme, or joins it to another', (tester) async {
