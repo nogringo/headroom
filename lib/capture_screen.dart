@@ -1230,6 +1230,20 @@ class _ThoughtTileState extends State<_ThoughtTile> {
   var _focused = false;
 
   @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addHighlightModeListener(_highlightModeChanged);
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeHighlightModeListener(_highlightModeChanged);
+    super.dispose();
+  }
+
+  void _highlightModeChanged(FocusHighlightMode _) => setState(() {});
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final title = widget.title;
@@ -1260,7 +1274,13 @@ class _ThoughtTileState extends State<_ThoughtTile> {
           TargetPlatform.linux => true,
           _ => false,
         };
-    final revealed = _hovered || _focused;
+    // Not on the focus a click gives on the web, through semantics, which
+    // Flutter counts as touch.
+    final revealed =
+        _hovered ||
+        _focused &&
+            FocusManager.instance.highlightMode ==
+                FocusHighlightMode.traditional;
     const fade = Duration(milliseconds: 120);
     return FocusRing(
       // Opaque so the swipe background only shows where the tile has slid away.

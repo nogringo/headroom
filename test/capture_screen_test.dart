@@ -677,6 +677,30 @@ void main() {
     expect(store.thoughts, isEmpty);
   }, variant: TargetPlatformVariant.desktop());
 
+  testWidgets('only keyboard focus reveals the delete button', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+    double opacity() => tester
+        .widget<AnimatedOpacity>(
+          find.ancestor(
+            of: find.byTooltip('Delete'),
+            matching: find.byType(AnimatedOpacity),
+          ),
+        )
+        .opacity;
+
+    // As a click on the web gives it, through semantics.
+    await tester.tapAt(const Offset(780, 580));
+    Focus.of(tester.element(find.text('Buy bread'))).requestFocus();
+    await tester.pumpAndSettle();
+    expect(opacity(), 0);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pumpAndSettle();
+    expect(opacity(), 1);
+  }, variant: TargetPlatformVariant.desktop());
+
   testWidgets('a touch where the delete button hides opens the thought', (
     tester,
   ) async {
