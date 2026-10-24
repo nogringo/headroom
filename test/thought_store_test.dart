@@ -264,6 +264,26 @@ void main() {
       expect(storage.saved.last.images, ['carton']);
     });
 
+    test('pins a thought and unpins it, and a merge keeps the pin', () async {
+      store
+        ..add('Buy milk')
+        ..add('Call the garage')
+        ..add('Milk');
+      final [newest, middle, oldest] = store.thoughts;
+
+      store.pin(oldest.id);
+      await store.flush();
+      expect(storage.saved.map((t) => t.pinned), [false, false, true]);
+
+      store.pin(oldest.id, pinned: false);
+      expect(store.thoughts.last.pinned, isFalse);
+
+      store.pin(oldest.id);
+      store.merge([newest.id, oldest.id], 'Buy milk');
+      expect(store.thoughts.first.pinned, isTrue);
+      expect(store.thoughts.last.id, middle.id);
+    });
+
     test('a new thought ranks above every other', () {
       final first = store.add('first')!;
       store.reorder('', [first.id]);

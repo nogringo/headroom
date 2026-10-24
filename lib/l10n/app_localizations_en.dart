@@ -100,6 +100,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textNotCopied => 'Couldn\'t copy the text.';
 
   @override
+  String get pin => 'Pin';
+
+  @override
+  String get unpin => 'Unpin';
+
+  @override
+  String get pinned => 'Pinned';
+
+  @override
   String get deleteTheme => 'Delete theme';
 
   @override

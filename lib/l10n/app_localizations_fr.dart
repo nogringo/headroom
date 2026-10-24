@@ -100,6 +100,15 @@ class AppLocalizationsFr extends AppLocalizations {
   String get textNotCopied => 'Impossible de copier le texte.';
 
   @override
+  String get pin => 'Épingler';
+
+  @override
+  String get unpin => 'Désépingler';
+
+  @override
+  String get pinned => 'Épinglées';
+
+  @override
   String get deleteTheme => 'Effacer le thème';
 
   @override

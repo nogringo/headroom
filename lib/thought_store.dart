@@ -139,6 +139,14 @@ class ThoughtStore extends ChangeNotifier {
     _changed();
   }
 
+  /// Keeps the thought above the others, or lets it go back among them.
+  void pin(String id, {bool pinned = true}) {
+    final index = _thoughts.indexWhere((t) => t.id == id);
+    if (index == -1 || _thoughts[index].pinned == pinned) return;
+    _thoughts[index] = _thoughts[index].copyWith(pinned: pinned);
+    _changed();
+  }
+
   /// Ticks off the thought's subtask at [index], or back on.
   void toggleSubtask(String id, int index) {
     final at = _thoughts.indexWhere((t) => t.id == id);
@@ -215,9 +223,9 @@ class ThoughtStore extends ChangeNotifier {
   }
 
   /// Replaces the thoughts [ids] with one holding [text] and all their
-  /// images and themes, with the highest rank each held in a theme. It takes
-  /// the id of the newest, and no title or subtasks, which were about the
-  /// old text. Returns what [unmerge] needs, or null when fewer than two of
+  /// images and themes, with the highest rank each held in a theme, pinned
+  /// when one was. It takes the id of the newest, and no title or subtasks,
+  /// which were about the old text. Returns what [unmerge] needs, or null when fewer than two of
   /// the thoughts are left.
   Merged? merge(List<String> ids, String text) {
     final trimmed = text.trim();
@@ -239,6 +247,7 @@ class ThoughtStore extends ChangeNotifier {
         for (final theme in themes.isEmpty ? const [''] : themes)
           theme: originals.map((o) => o.thought.rankIn(theme)).reduce(math.max),
       },
+      pinned: originals.any((o) => o.thought.pinned),
     );
     for (final o in originals.reversed) {
       _thoughts.removeAt(o.index);

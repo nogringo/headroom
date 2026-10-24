@@ -124,6 +124,18 @@
   "@textNotCopied": {
     "description": "Shown when copying a thought's text from its menu failed."
   },
+  "pin": "Pin",
+  "@pin": {
+    "description": "Item of a thought's right-click menu, its accessibility action and the tooltip of the edit dialog's button, that keep the thought above the others in the list of every thought and in each of its themes."
+  },
+  "unpin": "Unpin",
+  "@unpin": {
+    "description": "Item of a pinned thought's right-click menu, its accessibility action and the tooltip of the pin shown on it, that let the thought go back among the others."
+  },
+  "pinned": "Pinned",
+  "@pinned": {
+    "description": "Heading of the pinned thoughts, above the days in the list of every thought."
+  },
   "deleteTheme": "Delete theme",
   "@deleteTheme": {
     "description": "Item of a theme's right-click menu in the sidebar, and its accessibility action. Takes the theme off its thoughts, which are kept."

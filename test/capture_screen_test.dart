@@ -1247,6 +1247,7 @@ void main() {
     expect(menuItem('Edit'), findsOneWidget);
     expect(menuItem('Copy text'), findsOneWidget);
     expect(find.widgetWithText(SubmenuButton, 'Themes'), findsOneWidget);
+    expect(menuItem('Pin'), findsOneWidget);
     expect(menuItem('Delete'), findsOneWidget);
     expect(menuItem('Move up'), findsNothing);
     expect(menuItem('Copy image'), findsNothing);
@@ -1338,6 +1339,96 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets('a pinned thought stays above the days until unpinned', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '2', text: 'Buy bread', createdAt: now),
+      Thought(
+        id: '1',
+        text: 'Water the plants',
+        createdAt: now.subtract(const Duration(days: 1)),
+      ),
+    ]);
+    double top(Finder finder) => tester.getTopLeft(finder).dy;
+
+    await rightClick(tester, listed('Water the plants'));
+    await tester.tap(menuItem('Pin'));
+    await tester.pumpAndSettle();
+    expect(top(find.text('Pinned')), lessThan(top(listed('Water the plants'))));
+    expect(top(listed('Water the plants')), lessThan(top(find.text('Today'))));
+    expect(top(find.text('Today')), lessThan(top(listed('Buy bread'))));
+    // Its day heading has gone, and the thought shows its day instead.
+    expect(
+      find.descendant(
+        of: find.ancestor(
+          of: listed('Water the plants'),
+          matching: find.byType(Dismissible),
+        ),
+        matching: find.text('Yesterday'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Yesterday'), findsOneWidget);
+    await store.flush();
+    expect(storage.saved.firstWhere((t) => t.id == '1').pinned, isTrue);
+
+    await tester.tap(find.byTooltip('Unpin'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pinned'), findsNothing);
+    expect(top(listed('Buy bread')), lessThan(top(find.text('Yesterday'))));
+    expect(
+      top(find.text('Yesterday')),
+      lessThan(top(listed('Water the plants'))),
+    );
+  });
+
+  testWidgets('pinning moves only that thought, the others stay put', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+    await pumpApp(tester, [
+      Thought(id: '3', text: 'Buy bread', createdAt: now),
+      Thought(id: '2', text: 'Water the plants', createdAt: yesterday),
+      Thought(
+        id: '1',
+        text: 'Post the letter',
+        createdAt: yesterday.subtract(const Duration(minutes: 1)),
+      ),
+    ]);
+    final focus = Focus.of(tester.element(listed('Post the letter')))
+      ..requestFocus();
+    await tester.pump();
+
+    store.pin('2');
+    await tester.pumpAndSettle();
+    expect(focus.hasPrimaryFocus, isTrue);
+
+    store.pin('2', pinned: false);
+    await tester.pumpAndSettle();
+    expect(focus.hasPrimaryFocus, isTrue);
+  });
+
+  testWidgets('the edit dialog pins a thought once saved', (tester) async {
+    await pumpApp(tester, [
+      Thought(id: '1', text: 'Buy bread', createdAt: DateTime.now()),
+    ]);
+
+    await tester.tap(find.text('Buy bread'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Pin'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Unpin'), findsOneWidget);
+    expect(store.thoughts.single.pinned, isFalse);
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(store.thoughts.single.pinned, isTrue);
+    expect(find.text('Pinned'), findsOneWidget);
+  });
 
   testWidgets('the viewer turns between the images of a thought', (
     tester,
@@ -2231,6 +2322,75 @@ void main() {
         'Post the letter',
         'Water the plants',
         'Buy bread',
+      ]);
+    });
+
+    testWidgets('a pinned one stays above the others, which move below it', (
+      tester,
+    ) async {
+      await pumpTheme(tester);
+
+      tester.semantics.customAction(
+        find.semantics.byPredicate(
+          (node) =>
+              node.label.startsWith('Water the plants') &&
+              node.getSemanticsData().hasAction(SemanticsAction.customAction),
+        ),
+        const CustomSemanticsAction(label: 'Pin'),
+      );
+      await tester.pumpAndSettle();
+      expect(order(tester), [
+        'Water the plants',
+        'Buy bread',
+        'Post the letter',
+      ]);
+
+      Focus.of(tester.element(listed('Buy bread'))).requestFocus();
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pumpAndSettle();
+      expect(order(tester), [
+        'Water the plants',
+        'Buy bread',
+        'Post the letter',
+      ]);
+
+      final mouse = await hoveringMouse(tester, 'Post the letter');
+      await mouse.down(tester.getCenter(listed('Post the letter')));
+      await drag(tester, mouse, -300);
+      expect(order(tester), [
+        'Water the plants',
+        'Post the letter',
+        'Buy bread',
+      ]);
+      // The pinned thought keeps its own place among the others.
+      expect(await savedOrder(), [
+        'Post the letter',
+        'Buy bread',
+        'Water the plants',
+      ]);
+
+      await enterText(tester, find.byType(ThoughtField), 'Call mum');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pumpAndSettle();
+      store.chooseThemes(store.thoughts.first.id, ['Errands']);
+      await tester.pumpAndSettle();
+      expect(order(tester), [
+        'Water the plants',
+        'Call mum',
+        'Post the letter',
+        'Buy bread',
+      ]);
+
+      store.pin('1', pinned: false);
+      await tester.pumpAndSettle();
+      expect(order(tester), [
+        'Call mum',
+        'Post the letter',
+        'Buy bread',
+        'Water the plants',
       ]);
     });
   });

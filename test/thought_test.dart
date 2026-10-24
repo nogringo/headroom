@@ -97,6 +97,15 @@ void main() {
     ]);
   });
 
+  test('remembers being pinned, and writes nothing until then', () {
+    final plain = Thought(id: '1', text: 'Note', createdAt: DateTime(2026));
+    final pinned = plain.copyWith(pinned: true);
+
+    expect(plain.toJson(), isNot(contains('pinned')));
+    expect(Thought.fromJson(plain.toJson()).pinned, isFalse);
+    expect(Thought.fromJson(pinned.toJson()).pinned, isTrue);
+  });
+
   test('ranks by its date in each theme, and writes a rank once moved', () {
     final noted = DateTime.utc(2026, 10, 20, 9);
     final unmoved = Thought(id: '1', text: 'Note', createdAt: noted);

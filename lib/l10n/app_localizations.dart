@@ -272,6 +272,24 @@ abstract class AppLocalizations {
   /// **'Couldn\'t copy the text.'**
   String get textNotCopied;
 
+  /// Item of a thought's right-click menu, its accessibility action and the tooltip of the edit dialog's button, that keep the thought above the others in the list of every thought and in each of its themes.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get pin;
+
+  /// Item of a pinned thought's right-click menu, its accessibility action and the tooltip of the pin shown on it, that let the thought go back among the others.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get unpin;
+
+  /// Heading of the pinned thoughts, above the days in the list of every thought.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned'**
+  String get pinned;
+
   /// Item of a theme's right-click menu in the sidebar, and its accessibility action. Takes the theme off its thoughts, which are kept.
   ///
   /// In en, this message translates to:

@@ -46,8 +46,9 @@ const _sidebarWidth = 240.0;
 
 const _messageWidth = 480.0;
 
-/// A heading for [day] when [thought] is null, else a thought noted that day.
-typedef _Row = ({DateTime day, Thought? thought});
+/// A heading when [thought] is null: for [day], or for the pinned thoughts
+/// when that is null too.
+typedef _Row = ({DateTime? day, Thought? thought});
 
 String _imageLabel(AppLocalizations l10n, int index, int count) =>
     count == 1 ? l10n.imageLabel : l10n.imagePosition(index + 1, count);
@@ -64,7 +65,42 @@ List<_Row> _rowsOf(Iterable<Thought> thoughts, {required bool withHeadings}) {
   return rows;
 }
 
-Object _keyOf(_Row row) => row.thought?.id ?? row.day;
+Object _keyOf(_Row row) => row.thought?.id ?? row.day ?? #pinned;
+
+/// The keys [from] and [to] have in the same order, as many as there can be.
+/// The others come, go or move.
+Set<Object> _keptInOrder(List<Object> from, List<Object> to) {
+  final positions = {for (final (i, key) in from.indexed) key: i};
+  final shared = [
+    for (final key in to)
+      if (positions[key] case final position?) (key: key, position: position),
+  ];
+  // The longest run of rising positions: ends[n] closes the lowest ending
+  // run of n + 1, previous links each back through its run.
+  final ends = <int>[];
+  final previous = List.filled(shared.length, -1);
+  for (var i = 0; i < shared.length; i++) {
+    var low = 0;
+    var high = ends.length;
+    while (low < high) {
+      final middle = (low + high) ~/ 2;
+      if (shared[ends[middle]].position < shared[i].position) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    if (low > 0) previous[i] = ends[low - 1];
+    if (low == ends.length) {
+      ends.add(i);
+    } else {
+      ends[low] = i;
+    }
+  }
+  return {
+    for (var i = ends.lastOrNull ?? -1; i != -1; i = previous[i]) shared[i].key,
+  };
+}
 
 extension on ScaffoldMessengerState {
   /// Replaces the message shown with [text], centered over the window past
@@ -147,7 +183,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   List<_Row> _currentRows() {
     final theme = _theme;
-    if (theme == null) return _rowsOf(_store.thoughts, withHeadings: true);
+    if (theme == null) {
+      final pinned = [
+        for (final t in _store.thoughts)
+          if (t.pinned) t,
+      ];
+      return [
+        if (pinned.isNotEmpty) (day: null, thought: null),
+        ..._rowsOf(pinned, withHeadings: false),
+        ..._rowsOf(_store.thoughts.where((t) => !t.pinned), withHeadings: true),
+      ];
+    }
     final thoughts = [
       for (final t in _store.thoughts)
         if (_isIn(t, theme) || (t.themes.isEmpty && _notedHere.contains(t.id)))
@@ -156,7 +202,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
     // Stable, so that thoughts of equal rank stay newest first.
     mergeSort(
       thoughts,
-      compare: (a, b) => b.rankIn(theme).compareTo(a.rankIn(theme)),
+      compare: (a, b) => a.pinned == b.pinned
+          ? b.rankIn(theme).compareTo(a.rankIn(theme))
+          : (a.pinned ? -1 : 1),
     );
     return _rowsOf(thoughts, withHeadings: false);
   }
@@ -310,24 +358,22 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   /// Animates the list from the rows it shows to the store's: thoughts and
-  /// headings that appear grow in, those that go away collapse.
+  /// headings that appear grow in, those that go away collapse, and those
+  /// that move do both.
   void _syncRows() {
     final from = _rows;
     final to = _rows = _currentRows();
     final list = _listKey.currentState;
     if (list == null) return;
-    final kept = {for (final row in to) _keyOf(row)};
+    final kept = _keptInOrder(
+      from.map(_keyOf).toList(),
+      to.map(_keyOf).toList(),
+    );
     var i = 0;
     var j = 0;
     var at = 0;
     while (i < from.length || j < to.length) {
-      final before = i < from.length ? _keyOf(from[i]) : null;
-      final after = j < to.length ? _keyOf(to[j]) : null;
-      if (before != null && before == after) {
-        i++;
-        j++;
-        at++;
-      } else if (before != null && (after == null || !kept.contains(before))) {
+      if (i < from.length && !kept.contains(_keyOf(from[i]))) {
         final removed = from[i++];
         // A swiped tile has already slid away. Any other row collapses.
         final swiped = removed.thought?.id == _swipedId;
@@ -338,9 +384,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
               : IgnorePointer(child: _buildRow(removed, animation)),
           duration: swiped ? Duration.zero : _motion,
         );
-      } else {
+      } else if (j < to.length && !kept.contains(_keyOf(to[j]))) {
         list.insertItem(at++, duration: _motion);
         j++;
+      } else {
+        i++;
+        j++;
+        at++;
       }
     }
   }
@@ -356,11 +406,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  /// Moves the thought at [from] in the open theme to [to].
+  /// Moves the thought at [from] in the open theme to [to], among the pinned
+  /// thoughts or among the others.
   void _move(int from, int to) {
     // Before the store tells the list, which then has nothing to animate.
     _rows.insert(to, _rows.removeAt(from));
-    _store.reorder(_theme!, [for (final row in _rows) row.thought!.id]);
+    final pinned = _rows[to].thought!.pinned;
+    _store.reorder(_theme!, [
+      for (final row in _rows)
+        if (row.thought!.pinned == pinned) row.thought!.id,
+    ]);
   }
 
   void _merge(Merge suggestion) {
@@ -430,6 +485,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (!listEquals(edit.themes, thought.themes)) {
       _store.chooseThemes(thought.id, edit.themes);
     }
+    _store.pin(thought.id, pinned: edit.pinned);
   }
 
   List<String> _themes() =>
@@ -878,6 +934,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           itemBuilder: (context, index, animation, moves) =>
                               _buildRow(_rows[index], animation, moves),
                           onReorderItem: _theme == null ? null : _move,
+                          groupOf: (index) => _rows[index].thought?.pinned,
                         ),
                       ),
                     ],
@@ -918,6 +975,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
     void chooseThemes(List<String> chosen) =>
         _store.chooseThemes(thought.id, chosen);
+    void togglePin() => _store.pin(thought.id, pinned: !thought.pinned);
+    final pinLabel = thought.pinned ? l10n.unpin : l10n.pin;
     return ContextMenu<int>(
       menuChildren: (image, focusFirst) => [
         if (image != null) ...[
@@ -950,6 +1009,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
           ),
           child: Text(l10n.themes),
         ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.push_pin_outlined),
+          onPressed: togglePin,
+          child: Text(pinLabel),
+        ),
         if (moves.up != null || moves.down != null) ...[
           const Divider(),
           ...moveMenuItems(context, up: moves.up, down: moves.down),
@@ -964,6 +1028,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       builder: (openImageMenu) => Semantics(
         customSemanticsActions: {
           CustomSemanticsAction(label: l10n.delete): () => _remove(thought),
+          CustomSemanticsAction(label: pinLabel): togglePin,
           ...moves.actions,
         },
         child: ClipRRect(
@@ -985,7 +1050,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 subtasks: thought.subtasks,
                 images: _imagesOf(thought),
                 createdAt: thought.createdAt,
-                withDay: _theme != null,
+                withDay: _theme != null || thought.pinned,
                 sorting: _tidier.willSort(thought),
                 themeButton: otherThemes.isEmpty
                     ? null
@@ -1023,6 +1088,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                         ),
                       ),
                 onTap: () => _edit(thought),
+                onUnpin: thought.pinned ? togglePin : null,
                 onToggleSubtask: (index) =>
                     _store.toggleSubtask(thought.id, index),
                 onImageTap: (index) => _view(thought.images, index),
@@ -1055,23 +1121,27 @@ class _Note extends StatelessWidget {
   );
 }
 
-/// Names the day the thoughts below it were noted.
+/// Names the day the thoughts below it were noted, or says they are pinned
+/// when [day] is null.
 class _Heading extends StatelessWidget {
   const _Heading({required this.day});
 
-  final DateTime day;
+  final DateTime? day;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsetsDirectional.fromSTEB(_inset, 24, _inset, 0),
-    child: Semantics(
-      header: true,
-      child: Text(
-        dayLabel(day, DateTime.now(), AppLocalizations.of(context)),
-        style: Theme.of(context).textTheme.titleSmall,
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(_inset, 24, _inset, 0),
+      child: Semantics(
+        header: true,
+        child: Text(switch (day) {
+          final day? => dayLabel(day, DateTime.now(), l10n),
+          null => l10n.pinned,
+        }, style: Theme.of(context).textTheme.titleSmall),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Proposes the AI's first clean-up: merging thoughts, or deleting one that
@@ -1185,6 +1255,7 @@ class _ThoughtTile extends StatefulWidget {
     required this.sorting,
     required this.themeButton,
     required this.onTap,
+    required this.onUnpin,
     required this.onToggleSubtask,
     required this.onImageTap,
     required this.onImageCopy,
@@ -1213,6 +1284,9 @@ class _ThoughtTile extends StatefulWidget {
   /// Under the text and images.
   final Widget? themeButton;
   final VoidCallback onTap;
+
+  /// Set for a pinned thought, whose pin it is pressed with.
+  final VoidCallback? onUnpin;
   final ValueChanged<int> onToggleSubtask;
   final ValueChanged<int> onImageTap;
   final ValueChanged<int> onImageCopy;
@@ -1264,6 +1338,7 @@ class _ThoughtTileState extends State<_ThoughtTile> {
             ),
       style: theme.textTheme.bodySmall,
     );
+    final onUnpin = widget.onUnpin;
     // Touch screens have the swipe. Where a pointer hovers, a button takes
     // the time's place on hover, or on keyboard focus.
     final deleteButton =
@@ -1377,45 +1452,68 @@ class _ThoughtTileState extends State<_ThoughtTile> {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    if (deleteButton)
-                      Stack(
-                        alignment: AlignmentDirectional.centerEnd,
-                        children: [
-                          AnimatedOpacity(
-                            opacity: revealed ? 0 : 1,
-                            duration: fade,
-                            child: Padding(
-                              padding: const EdgeInsetsDirectional.only(
-                                end: _inset - 6,
-                              ),
-                              child: time,
+                    // In a row of its own, the pin lines up with the time.
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (onUnpin != null)
+                          IconButton(
+                            constraints: const BoxConstraints.tightFor(
+                              width: 28,
+                              height: 28,
                             ),
+                            padding: EdgeInsets.zero,
+                            iconSize: 16,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            tooltip: AppLocalizations.of(context).unpin,
+                            onPressed: onUnpin,
+                            icon: const Icon(Icons.push_pin),
                           ),
-                          // A touch screen has no hover: a touch on the hidden
-                          // button opens the thought, as anywhere else on it.
-                          _PointerGate(
-                            open: revealed,
-                            child: AnimatedOpacity(
-                              opacity: revealed ? 1 : 0,
-                              duration: fade,
-                              alwaysIncludeSemantics: true,
-                              child: IconButton(
-                                constraints: const BoxConstraints.tightFor(
-                                  width: 32,
-                                  height: 28,
+                        if (deleteButton)
+                          Stack(
+                            alignment: AlignmentDirectional.centerEnd,
+                            children: [
+                              AnimatedOpacity(
+                                opacity: revealed ? 0 : 1,
+                                duration: fade,
+                                child: Padding(
+                                  padding: const EdgeInsetsDirectional.only(
+                                    end: _inset - 6,
+                                  ),
+                                  child: time,
                                 ),
-                                padding: EdgeInsets.zero,
-                                iconSize: 18,
-                                tooltip: AppLocalizations.of(context).delete,
-                                onPressed: widget.onDelete,
-                                icon: const Icon(Icons.delete_outline_rounded),
                               ),
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      time,
+                              // A touch screen has no hover: a touch on the
+                              // hidden button opens the thought, as anywhere
+                              // else on it.
+                              _PointerGate(
+                                open: revealed,
+                                child: AnimatedOpacity(
+                                  opacity: revealed ? 1 : 0,
+                                  duration: fade,
+                                  alwaysIncludeSemantics: true,
+                                  child: IconButton(
+                                    constraints: const BoxConstraints.tightFor(
+                                      width: 32,
+                                      height: 28,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    iconSize: 18,
+                                    tooltip: AppLocalizations.of(context)
+                                        .delete,
+                                    onPressed: widget.onDelete,
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          time,
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1968,6 +2066,7 @@ typedef _Edit = ({
   List<Map<String, dynamic>> delta,
   List<String> images,
   List<String> themes,
+  bool pinned,
 });
 
 class _EditDialog extends StatefulWidget {
@@ -2000,6 +2099,7 @@ class _EditDialogState extends State<_EditDialog> {
       (name: name, image: widget.store.imageNamed(name)),
   ];
   late var _themes = widget.thought.themes;
+  late var _pinned = widget.thought.pinned;
   String? _error;
 
   bool get _canSave =>
@@ -2021,6 +2121,7 @@ class _EditDialogState extends State<_EditDialog> {
       delta: content.delta,
       images: [for (final pasted in _images) pasted.name],
       themes: _themes,
+      pinned: _pinned,
     ));
   }
 
@@ -2122,14 +2223,27 @@ class _EditDialogState extends State<_EditDialog> {
         ],
       ),
       actions: [
-        IconButton(
-          tooltip: l10n.delete,
-          color: scheme.onPrimaryContainer,
-          onPressed: () {
-            Navigator.pop(context);
-            widget.onDelete();
-          },
-          icon: const Icon(Icons.delete_outline_rounded),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: l10n.delete,
+              color: scheme.onPrimaryContainer,
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onDelete();
+              },
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+            IconButton(
+              tooltip: _pinned ? l10n.unpin : l10n.pin,
+              color: scheme.onPrimaryContainer,
+              isSelected: _pinned,
+              onPressed: () => setState(() => _pinned = !_pinned),
+              icon: const Icon(Icons.push_pin_outlined),
+              selectedIcon: const Icon(Icons.push_pin),
+            ),
+          ],
         ),
         Row(
           mainAxisSize: MainAxisSize.min,

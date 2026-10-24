@@ -54,6 +54,7 @@ class SliverAnimatedReorderableList extends StatefulWidget {
     required this.itemBuilder,
     this.initialItemCount = 0,
     this.onReorderItem,
+    this.groupOf,
   });
 
   final MovableItemBuilder itemBuilder;
@@ -62,6 +63,10 @@ class SliverAnimatedReorderableList extends StatefulWidget {
   /// Called with an item's index and the one it moves to, both counted
   /// without the items being removed.
   final ReorderCallback? onReorderItem;
+
+  /// Keeps each item among the neighbours in the same group, when set. An
+  /// item dropped past them lands at their end.
+  final Object? Function(int index)? groupOf;
 
   @override
   SliverAnimatedReorderableListState createState() =>
@@ -162,15 +167,38 @@ class SliverAnimatedReorderableListState
     });
   }
 
+  /// The first and last slots the item at [at] can move to.
+  (int, int) _spanOf(int at) {
+    final groupOf = widget.groupOf;
+    if (groupOf == null) return (0, _slots.length - 1);
+    final group = groupOf(_indices[at]!);
+    bool joins(int slot) => switch (_indices[slot]) {
+      // Collapsing away, it holds no item.
+      null => true,
+      final index => groupOf(index) == group,
+    };
+    var first = at;
+    while (first > 0 && joins(first - 1)) {
+      first--;
+    }
+    var last = at;
+    while (last < _slots.length - 1 && joins(last + 1)) {
+      last++;
+    }
+    return (first, last);
+  }
+
   /// [from] and [to] count every slot, as [SliverReorderableList] does.
   void _reorder(int from, int to) {
     final index = _indices[from];
     if (index == null) return;
+    final (first, last) = _spanOf(from);
+    final at = to.clamp(first, last);
     setState(() {
-      _slots.insert(to, _slots.removeAt(from));
+      _slots.insert(at, _slots.removeAt(from));
       _indices = _indexed();
     });
-    widget.onReorderItem!(index, _indices[to]!);
+    widget.onReorderItem!(index, _indices[at]!);
   }
 
   Widget _buildSlot(BuildContext context, int at) {
@@ -196,8 +224,9 @@ class SliverAnimatedReorderableListState
     int at,
     Animation<double> animation,
   ) {
-    final up = at > 0 ? () => _reorder(at, at - 1) : null;
-    final down = at < _slots.length - 1 ? () => _reorder(at, at + 1) : null;
+    final (first, last) = _spanOf(at);
+    final up = at > first ? () => _reorder(at, at - 1) : null;
+    final down = at < last ? () => _reorder(at, at + 1) : null;
     final widgets = WidgetsLocalizations.of(context);
     final item = widget.itemBuilder(
       context,

@@ -13,6 +13,7 @@ class Thought {
     this.title,
     this.subtasks = const [],
     this.ranks = const {},
+    this.pinned = false,
   });
 
   factory Thought.fromJson(Map<String, dynamic> json) {
@@ -42,6 +43,7 @@ class Thought {
         ...?(json['ranks'] as Map<String, dynamic>?)?.cast<String, int>(),
         if (json['rank'] case final int rank) theme ?? '': rank,
       },
+      pinned: json['pinned'] == true,
     );
   }
 
@@ -79,6 +81,10 @@ class Thought {
   /// noted, in microseconds, until the person moves it.
   int rankIn(String theme) => ranks[theme] ?? createdAt.microsecondsSinceEpoch;
 
+  /// Whether it stays above the others, in the list of every thought and in
+  /// each of its themes.
+  final bool pinned;
+
   /// Null keeps what this thought has.
   Thought copyWith({
     String? text,
@@ -89,6 +95,7 @@ class Thought {
     String? title,
     List<Subtask>? subtasks,
     Map<String, int>? ranks,
+    bool? pinned,
   }) => Thought(
     id: id,
     text: text ?? this.text,
@@ -100,6 +107,7 @@ class Thought {
     title: title ?? this.title,
     subtasks: subtasks ?? this.subtasks,
     ranks: ranks ?? this.ranks,
+    pinned: pinned ?? this.pinned,
   );
 
   Map<String, Object> toJson() {
@@ -124,6 +132,7 @@ class Thought {
             {'text': subtask.text, if (subtask.done) 'done': true},
         ],
       if (moved.isNotEmpty) 'ranks': moved,
+      if (pinned) 'pinned': true,
     };
   }
 }
