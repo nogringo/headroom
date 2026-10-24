@@ -14,6 +14,7 @@ class Sidebar extends StatelessWidget {
   const Sidebar({
     super.key,
     required this.themes,
+    required this.counts,
     required this.selected,
     required this.onSelect,
     required this.onCreate,
@@ -27,6 +28,10 @@ class Sidebar extends StatelessWidget {
 
   /// In the person's order, then '' for the thoughts without one.
   final List<String> themes;
+
+  /// How many thoughts each theme lists, '' for those without one. A theme
+  /// with none is left out.
+  final Map<String, int> counts;
 
   /// Null for every thought.
   final String? selected;
@@ -67,10 +72,14 @@ class Sidebar extends StatelessWidget {
       label: label,
       selected: theme == selected,
       onTap: () => onSelect(theme),
+      count: theme == null ? null : counts[theme],
       actions: actions,
       trailing: theme == selected && theme != null && theme.isNotEmpty
           ? IconButton(
-              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+              constraints: const BoxConstraints.tightFor(
+                width: _Entry.trailingWidth,
+                height: 36,
+              ),
               padding: EdgeInsets.zero,
               iconSize: 18,
               color: scheme.onSurfaceVariant,
@@ -216,8 +225,11 @@ class _Entry extends StatelessWidget {
     this.selected = false,
     this.leading,
     this.trailing,
+    this.count,
     this.actions = const {},
   });
+
+  static const trailingWidth = 36.0;
 
   final String label;
 
@@ -225,70 +237,109 @@ class _Entry extends StatelessWidget {
   final VoidCallback? onTap;
   final bool selected;
   final Widget? leading;
+
+  /// [trailingWidth] wide, before [count].
   final Widget? trailing;
+
+  /// How many thoughts it lists, shown at its end unless null.
+  final int? count;
 
   /// For a screen reader.
   final Map<CustomSemanticsAction, VoidCallback> actions;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     // The other themes stay quiet beside the one open.
     final color = selected ? scheme.onSurface : scheme.onSurfaceVariant;
     final leading = this.leading;
     final trailing = this.trailing;
+    final count = this.count;
+    final number = count == null
+        ? null
+        : ExcludeSemantics(
+            child: Text(
+              '$count',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          );
     return Material(
       color: selected ? scheme.outlineVariant : Colors.transparent,
       borderRadius: paperRadius,
-      child: Row(
+      child: Stack(
         children: [
-          Expanded(
-            child: Semantics(
-              button: true,
-              selected: selected,
-              customSemanticsActions: actions,
-              child: FocusRing(
-                builder: (onFocusChange) => InkWell(
-                  borderRadius: paperRadius,
-                  onTap: onTap,
-                  onFocusChange: onFocusChange,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      children: [
-                        if (leading != null) ...[
-                          IconTheme.merge(
-                            data: IconThemeData(color: color, size: 18),
-                            child: leading,
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-                        Expanded(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: color,
-                              fontWeight: selected ? FontWeight.w600 : null,
-                            ),
+          Semantics(
+            button: true,
+            selected: selected,
+            value: count == null ? null : l10n.thoughtCount(count),
+            customSemanticsActions: actions,
+            child: FocusRing(
+              builder: (onFocusChange) => InkWell(
+                borderRadius: paperRadius,
+                onTap: onTap,
+                onFocusChange: onFocusChange,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      if (leading != null) ...[
+                        IconTheme.merge(
+                          data: IconThemeData(color: color, size: 18),
+                          child: leading,
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: color,
+                            fontWeight: selected ? FontWeight.w600 : null,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                      if (trailing != null)
+                        const SizedBox(width: trailingWidth)
+                      else if (number != null)
+                        const SizedBox(width: 12),
+                      ?number,
+                    ],
                   ),
                 ),
               ),
             ),
           ),
+          // Laid over the button rather than in it, not to nest one button in
+          // another, but the numbers still line up.
           if (trailing != null)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: 2),
-              child: trailing,
+            PositionedDirectional(
+              top: 0,
+              bottom: 0,
+              end: 12,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  trailing,
+                  if (number != null)
+                    Visibility(
+                      visible: false,
+                      maintainState: true,
+                      maintainAnimation: true,
+                      maintainSize: true,
+                      child: number,
+                    ),
+                ],
+              ),
             ),
         ],
       ),

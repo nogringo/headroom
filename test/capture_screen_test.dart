@@ -1938,6 +1938,44 @@ void main() {
       expect(order(), ['Errands', 'Études', 'Work']);
     });
 
+    testWidgets('counts the thoughts of each theme, not of All', (
+      tester,
+    ) async {
+      await pumpThemes(tester);
+      store.chooseThemes('1', ['Errands', 'Work']);
+      store.addThemes(['Bills']);
+      await tester.pumpAndSettle();
+      await tester.tap(inSidebar('Work'));
+      await tester.pumpAndSettle();
+
+      String count(String entry) => tester.getSemantics(inSidebar(entry)).value;
+      expect(count('All'), isEmpty);
+      expect(count('Work'), '2 thoughts');
+      expect(count('Errands'), '1 thought');
+      expect(count('Bills'), isEmpty);
+      expect(count('No theme'), '1 thought');
+
+      final two = find.text('2').hitTestable();
+      expect(two, findsOneWidget);
+      expect(
+        tester.getTopRight(two).dx,
+        tester.getTopRight(find.text('1').hitTestable().first).dx,
+      );
+      expect(
+        tester.getTopRight(find.byTooltip('Rename theme')).dx,
+        lessThanOrEqualTo(tester.getTopLeft(two).dx),
+      );
+
+      await tester.tapAt(
+        Offset(
+          tester.getCenter(two).dx,
+          tester.getCenter(inSidebar('Errands')).dy,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(listSettings.theme, 'Errands');
+    });
+
     testWidgets('creates a theme, which opens empty', (tester) async {
       await pumpThemes(tester);
       Future<void> create(String name) async {

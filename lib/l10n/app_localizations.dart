@@ -314,6 +314,12 @@ abstract class AppLocalizations {
   /// **'No theme'**
   String get noTheme;
 
+  /// How many thoughts a theme lists, read by a screen reader after its name in the sidebar, which shows the number alone.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 thought} other{{count} thoughts}}'**
+  String thoughtCount(int count);
+
   /// Tooltip of the edit dialog's button that shows the thought's themes and opens a menu to change them.
   ///
   /// In en, this message translates to:

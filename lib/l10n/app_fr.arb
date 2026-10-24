@@ -36,6 +36,7 @@
   "themeDeleted": "Thème effacé. Ses pensées restent.",
   "allThoughts": "Tout",
   "noTheme": "Sans thème",
+  "thoughtCount": "{count, plural, =1{1 pensée} other{{count}\u00a0pensées}}",
   "themes": "Thèmes",
   "changeThemes": "Changer les thèmes",
   "chooseThemes": "Choisir des thèmes",

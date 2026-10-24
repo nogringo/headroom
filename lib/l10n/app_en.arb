@@ -152,6 +152,15 @@
   "@noTheme": {
     "description": "Sidebar entry for the thoughts without a theme."
   },
+  "thoughtCount": "{count, plural, =1{1 thought} other{{count} thoughts}}",
+  "@thoughtCount": {
+    "description": "How many thoughts a theme lists, read by a screen reader after its name in the sidebar, which shows the number alone.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "themes": "Themes",
   "@themes": {
     "description": "Tooltip of the edit dialog's button that shows the thought's themes and opens a menu to change them."

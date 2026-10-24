@@ -229,6 +229,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
     ];
   }
 
+  /// How many thoughts each theme lists, '' for no theme.
+  Map<String, int> _themeCounts() {
+    final counts = <String, int>{};
+    for (final thought in _store.thoughts) {
+      // Like the entry for no theme, which would flicker.
+      if (thought.themes.isEmpty && _tidier.willSort(thought)) continue;
+      for (final theme
+          in thought.themes.isEmpty ? const [''] : thought.themes) {
+        counts.update(theme, (count) => count + 1, ifAbsent: () => 1);
+      }
+    }
+    return counts;
+  }
+
   bool get _wide => MediaQuery.sizeOf(context).width >= _wideWidth;
 
   /// Where the list's side of the window starts, past a sidebar beside it.
@@ -668,6 +682,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         ? null
         : Sidebar(
             themes: themes,
+            counts: _themeCounts(),
             selected: _theme,
             onSelect: _open,
             onCreate: _createTheme,

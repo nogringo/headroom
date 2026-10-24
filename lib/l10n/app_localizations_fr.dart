@@ -121,6 +121,17 @@ class AppLocalizationsFr extends AppLocalizations {
   String get noTheme => 'Sans thème';
 
   @override
+  String thoughtCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pensées',
+      one: '1 pensée',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get themes => 'Thèmes';
 
   @override
