@@ -1627,6 +1627,32 @@ void main() {
     expect(tester.widget<CheckboxMenuButton>(checkItem('Work')).value, isTrue);
   });
 
+  testWidgets('the themes of a thought open a menu under them that stays put', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await pumpApp(tester, [
+      Thought(id: '2', text: 'Fix the build', createdAt: now, themes: ['Work']),
+      Thought(id: '1', text: 'Buy bread', createdAt: now, themes: ['Food']),
+    ]);
+    final button = find.descendant(
+      of: find.byType(SliverAnimatedReorderableList),
+      matching: find.widgetWithText(TextButton, 'Food'),
+    );
+    final below = tester.getBottomLeft(button).dy;
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    final food = tester.getTopLeft(checkItem('Food'));
+    final work = tester.getTopLeft(checkItem('Work'));
+    expect(food.dy, greaterThanOrEqualTo(below));
+    expect(work.dy, greaterThanOrEqualTo(below));
+
+    await tester.tap(checkItem('Work'));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(checkItem('Food')), food);
+    expect(tester.getTopLeft(checkItem('Work')), work);
+  });
+
   testWidgets('renames the open theme, or joins it to another', (tester) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1;

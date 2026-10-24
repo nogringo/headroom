@@ -2185,6 +2185,9 @@ class _ThemeMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MenuAnchor(
+    // Inside a thought's context menu, Flutter would open it as a submenu, at
+    // the end of the button, which moves as ticking themes changes its label.
+    style: const MenuStyle(alignment: AlignmentDirectional.bottomStart),
     menuChildren: _themeItems(
       context,
       selected: selected,
