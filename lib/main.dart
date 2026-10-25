@@ -35,9 +35,15 @@ Future<void> main() async {
       backup: backup,
     ),
   );
-  // Otherwise screen readers see nothing until they find Flutter's hidden
-  // "Enable accessibility" button.
-  if (kIsWeb) SemanticsBinding.instance.ensureSemantics();
+  if (kIsWeb) {
+    // Otherwise screen readers see nothing until they find Flutter's hidden
+    // "Enable accessibility" button.
+    SemanticsBinding.instance.ensureSemantics();
+    // A hidden tab draws no frame, so the engine would never see the field
+    // lose its focus, and once back, typing and pasting would go nowhere. A
+    // warm-up frame runs on a timer, which hidden tabs still fire.
+    AppLifecycleListener(onHide: WidgetsBinding.instance.scheduleWarmUpFrame);
+  }
 }
 
 class HeadroomApp extends StatelessWidget {
