@@ -164,10 +164,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
   /// The images pasted into the field, waiting to be sent.
   var _attachments = <PastedImage>[];
 
-  /// Thoughts noted in the open theme, kept in it until the AI gives them
-  /// theirs.
-  final _notedHere = <String>{};
-
   /// What the list shows, kept in step with the store by [_syncRows].
   late var _rows = _currentRows();
 
@@ -196,8 +192,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
     final thoughts = [
       for (final t in _store.thoughts)
-        if (_isIn(t, theme) || (t.themes.isEmpty && _notedHere.contains(t.id)))
-          t,
+        if (_isIn(t, theme)) t,
     ];
     // Stable, so that thoughts of equal rank stay newest first.
     mergeSort(
@@ -320,11 +315,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
       content.text,
       delta: content.delta,
       images: images,
+      themes: [if (_theme case final theme? when theme.isNotEmpty) theme],
     );
     if (thought == null) return;
-    // Its id is only known now, after the store has told the list.
-    _notedHere.add(thought.id);
-    _syncRows();
     _tidier.noted(thought);
     // Rather than clear(), which keeps the last line's list and bold.
     _input
@@ -463,7 +456,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
     if (theme == _theme) return;
     setState(() {
       _listSettings.theme = theme;
-      _notedHere.clear();
       _rows = _currentRows();
       // A fresh list, rather than every row sliding to its new place.
       _listKey = GlobalKey();

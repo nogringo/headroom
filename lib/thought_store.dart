@@ -68,11 +68,13 @@ class ThoughtStore extends ChangeNotifier {
   Future<Uint8List> readImage(String name) => _storage.readImage(name);
 
   /// Needs a non-blank [text], some [images], or both. [delta] is the
-  /// text's formatting, see [Thought.delta].
+  /// text's formatting, see [Thought.delta]. [themes] are those it was noted
+  /// in, which the AI only adds to.
   Thought? add(
     String text, {
     List<Map<String, dynamic>> delta = const [],
     List<String> images = const [],
+    List<String> themes = const [],
   }) {
     final trimmed = text.trim();
     if (trimmed.isEmpty && images.isEmpty) return null;
@@ -83,6 +85,7 @@ class ThoughtStore extends ChangeNotifier {
       delta: delta,
       images: images,
       createdAt: now,
+      themes: themes,
     );
     _thoughts.insert(0, thought);
     _changed();
@@ -109,8 +112,8 @@ class ThoughtStore extends ChangeNotifier {
     _changed();
   }
 
-  /// Gives the thought what the AI found for it, but not [themes] when the
-  /// person chose its own.
+  /// Gives the thought what the AI found for it, [themes] on top of those it
+  /// was noted in, but none when the person chose its own.
   void annotate(
     String id, {
     required List<String> themes,
@@ -121,7 +124,9 @@ class ThoughtStore extends ChangeNotifier {
     if (index == -1) return;
     final thought = _thoughts[index];
     _thoughts[index] = thought.copyWith(
-      themes: thought.themesChosen ? null : themes,
+      themes: thought.themesChosen
+          ? null
+          : {...thought.themes, ...themes}.toList(),
       title: title,
       subtasks: [for (final text in subtasks) (text: text, done: false)],
     );

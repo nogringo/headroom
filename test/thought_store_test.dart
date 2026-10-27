@@ -123,6 +123,15 @@ void main() {
       expect(store.thoughts.single.themesChosen, isTrue);
     });
 
+    test('adds what the AI found to the themes a thought was noted in', () {
+      final thought = store.add('Buy bread', themes: ['Errands'])!;
+      expect(store.themes, {'Errands'});
+
+      store.annotate(thought.id, themes: ['Food', 'Errands']);
+      expect(store.thoughts.single.themes, ['Errands', 'Food']);
+      expect(store.thoughts.single.themesChosen, isFalse);
+    });
+
     test('ticks a subtask off and back on', () async {
       final thought = store.add('Bread, milk')!;
       store.annotate(thought.id, themes: [], subtasks: ['Bread', 'Milk']);

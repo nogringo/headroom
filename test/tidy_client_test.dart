@@ -72,6 +72,30 @@ void main() {
     expect(described.subtasks, ['Lait entier', 'Lait de coco']);
   });
 
+  test('tells the themes the thought was noted in', () async {
+    late http.Request sent;
+    final client = TidyClient(
+      MockClient((request) async {
+        sent = request;
+        return describedAs(['Courses']);
+      }),
+    );
+
+    await client.describe(
+      testAi,
+      thought.copyWith(themes: ['Courses']),
+      themes: ['Courses', 'Santé'],
+      chosen: [],
+    );
+
+    expect(sentInput(sent), {
+      'themes': ['Courses', 'Santé'],
+      'sortedByOwner': [],
+      'notedIn': ['Courses'],
+      'thought': 'Acheter du lait',
+    });
+  });
+
   test('reads no title or subtasks when the thought needs none', () async {
     final client = TidyClient(
       MockClient(

@@ -120,9 +120,9 @@ class TidyClient {
   /// Reasoning models can think for a while over a long list.
   static const timeout = Duration(minutes: 3);
 
-  /// Finds the themes of [thought] among the list's [themes], and its title
-  /// and subtasks when it needs some. The [chosen] thoughts show how the
-  /// person sorts.
+  /// Finds the themes of [thought] among the list's [themes], besides those
+  /// it was noted in, and its title and subtasks when it needs some. The
+  /// [chosen] thoughts show how the person sorts.
   Future<Described> describe(
     AiSettings settings,
     Thought thought, {
@@ -136,6 +136,7 @@ class TidyClient {
       'sortedByOwner': [
         for (final t in chosen) {'text': t.text, 'themes': t.themes},
       ],
+      if (thought.themes.isNotEmpty) 'notedIn': thought.themes,
       'thought': thought.text,
     });
     String? trimmed(Object? text) => switch (text) {
@@ -334,7 +335,7 @@ You help keep a personal list of quick notes tidy. Its owner jots thoughts down 
 
 Do three things.
 
-1. Give the thought its themes: usually one, more only when it truly belongs to several. Sort it the way the owner sorted similar thoughts. Reuse an existing theme whenever one fits. Create a new theme only for a subject none of them covers, and name it so it can hold future thoughts too: one to three words, in the language the thought is written in, starting with a capital letter.
+1. Give the thought its themes: usually one, more only when it truly belongs to several. Sort it the way the owner sorted similar thoughts. Reuse an existing theme whenever one fits. Create a new theme only for a subject none of them covers, and name it so it can hold future thoughts too: one to three words, in the language the thought is written in, starting with a capital letter. When "notedIn" is given, the owner noted the thought in those themes and they stay: reply with them, plus another theme only when the thought truly belongs to it as well.
 
 2. When the thought is long or covers several things, give it a title: a few words that say what it is about, in its language. A short thought is its own title and gets none.
 

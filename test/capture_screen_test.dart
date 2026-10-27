@@ -2509,10 +2509,11 @@ void main() {
     });
 
     testWidgets(
-      'a thought noted in a theme stays there until the AI sorts it',
+      'a thought noted in a theme stays there, in the themes the AI adds too',
       (tester) async {
         final now = DateTime.now();
         final answer = Completer<void>();
+        late http.Request asked;
         await pumpApp(
           tester,
           [
@@ -2531,6 +2532,7 @@ void main() {
           ],
           const {},
           (request) async {
+            asked = request;
             await answer.future;
             return describedAs(['Errands']);
           },
@@ -2551,11 +2553,21 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         expect(listed('Buy milk'), findsOneWidget);
 
+        expect(store.thoughts.first.themes, ['Work']);
+        expect(sentInput(asked)['notedIn'], ['Work']);
+
         answer.complete();
         await tester.pumpAndSettle();
-        expect(store.thoughts.first.themes, ['Errands']);
-        expect(listed('Buy milk'), findsNothing);
+        expect(store.thoughts.first.themes, ['Work', 'Errands']);
+        expect(listed('Buy milk'), findsOneWidget);
         expect(listed('Fix the build'), findsOneWidget);
+
+        await tester.tap(find.byTooltip('Open navigation menu'));
+        await tester.pumpAndSettle();
+        await tester.tap(inSidebar('Errands'));
+        await tester.pumpAndSettle();
+        expect(listed('Buy milk'), findsOneWidget);
+        expect(listed('Buy bread'), findsOneWidget);
       },
     );
 
